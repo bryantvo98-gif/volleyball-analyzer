@@ -1,0 +1,21 @@
+[project]
+name = "vbtool"
+version = "0.1.0"
+description = "Semi-automatic volleyball match analysis from fixed-camera video"
+requires-python = ">=3.10"
+dependencies = [
+  "yt-dlp>=2024.1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+vb = "vbtool.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["vbtool"]

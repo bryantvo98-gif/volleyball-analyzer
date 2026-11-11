@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from . import media
+from . import media, rallies
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -18,10 +18,24 @@ def main(argv: list[str] | None = None) -> None:
     ing.add_argument("--width", type=int, default=960, help="Width of sampled frames in px (default 960)")
     ing.add_argument("--data", type=Path, default=media.DATA_DIR, help="Where match folders live")
 
+    ral = sub.add_parser("rallies", help="Find points in an ingested match and cut a clip for each")
+    ral.add_argument("match_id", help="Match id used with `vb ingest`")
+    ral.add_argument("--no-clips", action="store_true", help="Skip cutting clips (faster, for tuning)")
+    ral.add_argument("--threshold", type=float, default=0.4,
+                     help="Motion threshold between quiet (0) and busy (1) levels (default 0.4)")
+    ral.add_argument("--min-rally", type=float, default=3.0, help="Shortest rally in seconds (default 3)")
+    ral.add_argument("--net-y", type=float, default=0.5,
+                     help="Net height in the image, 0 = top, 1 = bottom (default 0.5)")
+    ral.add_argument("--data", type=Path, default=media.DATA_DIR, help="Where match folders live")
+
     args = p.parse_args(argv)
     if args.cmd == "ingest":
         media.ingest(args.source, match_id=args.match_id, root=args.data,
                      frame_rate=args.fps, frame_width=args.width)
+    elif args.cmd == "rallies":
+        params = rallies.RallyParams(threshold_mix=args.threshold, min_rally_s=args.min_rally,
+                                     net_y=args.net_y)
+        rallies.run(args.match_id, root=args.data, clips=not args.no_clips, p=params)
 
 
 if __name__ == "__main__":

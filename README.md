@@ -8,7 +8,7 @@ involved, and lets you confirm or fix those guesses before building a match summ
 
 1. **Set up and pull in a match** (done): download a YouTube match and split it
    into frames and audio.
-2. **Find the rallies**: detect point start and end from ball movement plus
+2. **Find the rallies** (done): detect point start and end from ball movement plus
    whistle and crowd audio, cut a clip per point, guess which side won.
 3. **Identify players and review points** (local web pages):
    - *Players screen*: the tool groups near-side players by outfit (colour and
@@ -42,6 +42,32 @@ vb ingest ~/Movies/match.mp4 --id league-week3
 This creates `data/matches/<id>/` with `video.mp4`, `audio.wav`, `frames/`
 (5 frames per second at 960 px wide by default) and `meta.json`. The `data/`
 folder is not committed to git.
+
+```bash
+vb rallies g5GqP4kEs_0
+```
+
+This finds each point and writes `points.json` plus one clip per point in
+`clips/`. It prints a line per point with its start and end time, who it thinks
+served and who it thinks won.
+
+How it decides:
+
+- **Rally start and end**: a rally is a stretch of high motion on court. The
+  cutoff adapts to each video. If a referee whistle comes within 3 seconds of the
+  motion stopping, the end moves to the whistle.
+- **Who served**: where the motion is in the first 1.5 seconds. A near-side serve
+  shows up at the bottom of the frame.
+- **Who won**: with rally scoring, the next point's server won this point. The
+  last point is left as unknown for you to fill in.
+
+Tuning, if points are merged, split or missed:
+
+- `--threshold 0.3` catches quieter rallies, `0.5` ignores more walking around.
+- `--min-rally 2` keeps very short points such as aces and service errors.
+- `--net-y 0.45` sets where the net sits in the image (0 is the top), which
+  matters for the serve guess.
+- `--no-clips` skips clip cutting so you can retune quickly.
 
 ## Tests
 

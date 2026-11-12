@@ -71,9 +71,12 @@ clip times.
 
 How it decides (default whistle mode):
 
-- **Whistles**: a loud, steady tone between about 2 and 4.5 kHz lasting at
-  least 0.45 seconds. Shorter sounds, such as shoe squeaks, are ignored.
-  Whistles less than 2 seconds apart count as one.
+- **Whistles**: a loud tone between about 2 and 4.5 kHz. A clear whistle lasts
+  at least 0.4 seconds. Cheering can drown out part of a whistle, so shorter
+  whistle-like sounds (0.15 to 0.4 seconds) are kept too, but trusted less:
+  they can only end a point, and only once 6 seconds have passed since the
+  serve whistle, so a squeak just after the serve doesn't end it. Whistles
+  less than 2 seconds apart count as one.
 - **Points**: whistles alternate between "serve" and "point over". A point
   runs from a serve whistle to the next whistle. If that would be longer than
   40 seconds (a missed whistle or a timeout), the tool starts pairing again
@@ -84,7 +87,7 @@ How it decides (default whistle mode):
 
 Options:
 
-- `--min-whistle 0.6` ignores more short sounds if squeaks still get through.
+- `--min-whistle 0.5` sets how long a sound must be to count as a clear whistle.
 - `--pad 3` keeps 3 seconds before and after each point instead of 2.
 - `--no-clips` skips clip cutting so you can retune quickly.
 - `--mode motion` uses the older motion-based approach, for videos without a

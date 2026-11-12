@@ -3,8 +3,9 @@
 Default ("whistle" mode), based on how refereed matches flow:
     serve whistle -> serve -> rally -> end whistle -> walk back -> next serve whistle
 1. Find referee whistles in the audio: a loud, narrow-band tone between about
-   2 and 4.5 kHz lasting at least `min_whistle_s` seconds. Shorter blips are
-   ignored because shoe squeaks look similar but are much shorter.
+   2 and 4.5 kHz. Clear whistles last at least `min_whistle_s`. Shorter
+   whistle-like sounds (often a whistle drowned out by cheering) are trusted
+   less: see pair_whistles.
 2. Whistles alternate serve / end. A point runs from a serve whistle to the
    next end whistle. If a "point" would be longer than `max_point_s` (usually a
    missed whistle or a timeout), the later whistle starts a fresh pairing.
@@ -43,7 +44,9 @@ class RallyParams:
     clip_pad_after_s: float = 2.0
     net_y: float = 0.5
     # Whistle mode
-    min_whistle_s: float = 0.45    # shoe squeaks are shorter than this
+    min_whistle_s: float = 0.4     # a clear whistle; shoe squeaks are shorter
+    weak_whistle_s: float = 0.15   # shorter whistle-like sounds (whistles drowned by cheering)
+    weak_min_point_s: float = 6.0  # a short sound only ends a point this long after the serve whistle
     merge_whistle_s: float = 2.0   # whistles closer than this count as one
     min_point_s: float = 2.0
     max_point_s: float = 40.0
@@ -121,10 +124,14 @@ def guess_server(near: np.ndarray, far: np.ndarray, start_s: float, rate: float,
 
 
 def clean_whistles(whistles: list[tuple[float, float]], p: RallyParams) -> list[tuple[float, float]]:
-    """Drop short blips (likely shoe squeaks) and merge whistles close together."""
+    """Drop tiny blips and merge whistle sounds close together.
+
+    Keeps both clear whistles and shorter whistle-like sounds; pair_whistles
+    decides how much to trust each one.
+    """
     out: list[list[float]] = []
     for a, b in whistles:
-        if b - a < p.min_whistle_s:
+        if b - a < p.weak_whistle_s:
             continue
         if out and a - out[-1][0] < p.merge_whistle_s:
             out[-1][1] = max(out[-1][1], b)
@@ -133,19 +140,33 @@ def clean_whistles(whistles: list[tuple[float, float]], p: RallyParams) -> list[
     return [(a, b) for a, b in out]
 
 
+def detect_from_raw(raw: list[tuple[float, float]], p: RallyParams) -> list[tuple[float, float]]:
+    return pair_whistles(clean_whistles(raw, p), p)
+
+
 def pair_whistles(whistles: list[tuple[float, float]], p: RallyParams) -> list[tuple[float, float]]:
-    """Pair alternating serve and end whistles into (serve_s, end_s) points."""
+    """Pair alternating serve and end whistles into (serve_s, end_s) points.
+
+    Clear whistles (at least `min_whistle_s` long) can start or end a point.
+    Short whistle-like sounds (`weak_whistle_s` to `min_whistle_s`) usually
+    mean a whistle partly drowned out by cheering, which happens most at the
+    end of a point. They can only end a point, and only once at least
+    `weak_min_point_s` has passed since the serve whistle, so a squeak right
+    after the serve whistle can't end it.
+    """
     points: list[tuple[float, float]] = []
     serve: float | None = None
-    for a, _ in whistles:
+    for a, b in whistles:
+        strong = (b - a) >= p.min_whistle_s - 1e-6
         if serve is None:
-            serve = a
+            if strong:
+                serve = a
             continue
         gap = a - serve
-        if gap < p.min_point_s:
+        if gap < (p.min_point_s if strong else p.weak_min_point_s):
             continue
         if gap > p.max_point_s:
-            serve = a          # lost track (missed whistle, timeout): restart here
+            serve = a if strong else None   # lost track (missed whistle, timeout): restart
             continue
         points.append((serve, a))
         serve = None

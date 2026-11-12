@@ -24,7 +24,7 @@ RALLIES = [(5, 15, "near"), (25, 37, "far"), (45, 55, "near")]
 END_WHISTLES = [15.6, 37.6, 55.6]
 SERVE_WHISTLES = [2.0, 22.0, 42.0]
 WHISTLES = sorted(END_WHISTLES + SERVE_WHISTLES)
-SQUEAKS = [8.0, 30.0, 48.0]   # short 3 kHz blips, like shoe squeaks
+SQUEAKS = [8.0, 30.0, 48.0]   # very short 3 kHz blips, like shoe squeaks
 W, H = 320, 180
 
 
@@ -59,7 +59,7 @@ def write_match(mdir, near_scale=1):
         m = (t >= w) & (t < w + 0.5)
         x[m] += 0.5 * np.sin(2 * np.pi * 3000 * t[m])
     for q in SQUEAKS:
-        m = (t >= q) & (t < q + 0.2)
+        m = (t >= q) & (t < q + 0.1)
         x[m] += 0.5 * np.sin(2 * np.pi * 3000 * t[m])
     pcm = (np.clip(x, -1, 1) * 32767).astype(np.int16)
     with wave.open(str(mdir / "audio.wav"), "wb") as f:
@@ -90,8 +90,7 @@ def test_whistles_found(match):
 
 def test_whistle_mode_points(match):
     points, debug = rallies.detect_points(match, mode="whistle")
-    assert len(debug["whistles"]) == 9          # includes the squeaks
-    assert len(debug["whistles_kept"]) == 6     # squeaks dropped
+    assert len(debug["whistles"]) == 6          # blips too short to register
     assert len(points) == 3
     for pt, s, e in zip(points, SERVE_WHISTLES, END_WHISTLES):
         assert abs(pt.start_s - s) < 0.1
@@ -140,3 +139,18 @@ def test_server_guess_with_bigger_near_players(tmp_path):
     write_match(mdir, near_scale=3)
     points, _ = rallies.detect_points(mdir)
     assert [p.server_guess for p in points] == [s for _, _, s in RALLIES]
+
+
+def test_short_sound_ends_point_but_not_right_after_serve():
+    """A whistle partly drowned out by cheering is short; it may end a point,
+    but a short sound soon after the serve whistle (a squeak) must not."""
+    p = rallies.RallyParams()
+    ws = [
+        (10.0, 11.0),    # serve whistle
+        (13.0, 13.25),   # squeak 3 s after serve: ignored
+        (22.0, 22.3),    # muffled end whistle: ends the point
+        (30.0, 31.0),    # next serve whistle
+        (33.0, 33.3),    # short sound can't start or end here
+        (41.0, 42.0),    # end whistle
+    ]
+    assert rallies.pair_whistles(ws, p) == [(10.0, 22.0), (30.0, 41.0)]

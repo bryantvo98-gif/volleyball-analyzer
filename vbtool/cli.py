@@ -23,8 +23,9 @@ def main(argv: list[str] | None = None) -> None:
     ral.add_argument("--mode", choices=["whistle", "motion"], default="whistle",
                      help="whistle (default): points run from serve whistle to end whistle. "
                           "motion: older approach for videos without whistles")
-    ral.add_argument("--min-whistle", type=float, default=0.45,
-                     help="Ignore whistle-like sounds shorter than this many seconds (default 0.45)")
+    ral.add_argument("--min-whistle", type=float, default=0.4,
+                     help="Length in seconds of a clear whistle (default 0.4). Shorter whistle-like "
+                          "sounds can still end a point")
     ral.add_argument("--pad", type=float, default=2.0,
                      help="Seconds of video to keep before and after each point (default 2)")
     ral.add_argument("--no-clips", action="store_true", help="Skip cutting clips (faster, for tuning)")

@@ -1,17 +1,22 @@
-"""Find rallies (points) and guess who won each one.
+"""Find points (rallies) in a match.
 
-How it works:
-1. A rally is a stretch of high court motion. The threshold adapts to each
-   video: it sits between the quiet level (30th percentile) and the busy level
-   (90th percentile) of the smoothed motion signal.
-2. If a referee whistle comes shortly after the motion stops, the point's end
-   is moved to that whistle.
-3. Who served is guessed from where the motion is in the first moments of the
-   rally: a near-side serve puts the motion at the bottom of the frame.
-4. With rally scoring, whoever serves the next point won this one, so the
-   winner of point N is the server of point N+1. The last point is unknown.
+Default ("whistle" mode), based on how refereed matches flow:
+    serve whistle -> serve -> rally -> end whistle -> walk back -> next serve whistle
+1. Find referee whistles in the audio: a loud, narrow-band tone between about
+   2 and 4.5 kHz lasting at least `min_whistle_s` seconds. Shorter blips are
+   ignored because shoe squeaks look similar but are much shorter.
+2. Whistles alternate serve / end. A point runs from a serve whistle to the
+   next end whistle. If a "point" would be longer than `max_point_s` (usually a
+   missed whistle or a timeout), the later whistle starts a fresh pairing.
+3. The clip starts `clip_pad_before_s` before the serve whistle (so the serve
+   is always in it) and ends `clip_pad_after_s` after the end whistle.
 
-Every guess carries a confidence so the review screen can flag weak ones.
+Who served and who won are left as "unknown" in whistle mode for you to set in
+the review screen; reliable guesses need ball tracking (a later step).
+
+"motion" mode is the older approach (stretches of high frame-to-frame change).
+It is kept for videos without whistles, but on a busy gym video it confuses
+players walking between points with rallies.
 """
 from __future__ import annotations
 
@@ -37,6 +42,11 @@ class RallyParams:
     clip_pad_before_s: float = 2.0
     clip_pad_after_s: float = 2.0
     net_y: float = 0.5
+    # Whistle mode
+    min_whistle_s: float = 0.45    # shoe squeaks are shorter than this
+    merge_whistle_s: float = 2.0   # whistles closer than this count as one
+    min_point_s: float = 2.0
+    max_point_s: float = 40.0
 
 
 @dataclass
@@ -110,9 +120,65 @@ def guess_server(near: np.ndarray, far: np.ndarray, start_s: float, rate: float,
     return side, round(conf, 3)
 
 
+def clean_whistles(whistles: list[tuple[float, float]], p: RallyParams) -> list[tuple[float, float]]:
+    """Drop short blips (likely shoe squeaks) and merge whistles close together."""
+    out: list[list[float]] = []
+    for a, b in whistles:
+        if b - a < p.min_whistle_s:
+            continue
+        if out and a - out[-1][0] < p.merge_whistle_s:
+            out[-1][1] = max(out[-1][1], b)
+        else:
+            out.append([a, b])
+    return [(a, b) for a, b in out]
+
+
+def pair_whistles(whistles: list[tuple[float, float]], p: RallyParams) -> list[tuple[float, float]]:
+    """Pair alternating serve and end whistles into (serve_s, end_s) points."""
+    points: list[tuple[float, float]] = []
+    serve: float | None = None
+    for a, _ in whistles:
+        if serve is None:
+            serve = a
+            continue
+        gap = a - serve
+        if gap < p.min_point_s:
+            continue
+        if gap > p.max_point_s:
+            serve = a          # lost track (missed whistle, timeout): restart here
+            continue
+        points.append((serve, a))
+        serve = None
+    return points
+
+
+def detect_points_from_whistles(mdir: Path, p: RallyParams,
+                                whistle_params: audio.WhistleParams | None = None) -> tuple[list[Point], dict]:
+    meta = json.loads((mdir / "meta.json").read_text())
+    duration = float(meta["duration_s"])
+    raw = audio.detect_whistles(mdir / "audio.wav", whistle_params)
+    kept = clean_whistles(raw, p)
+    points = [
+        Point(
+            index=i + 1, start_s=round(a, 2), end_s=round(b, 2),
+            clip_start_s=round(max(0.0, a - p.clip_pad_before_s), 2),
+            clip_end_s=round(min(duration, b + p.clip_pad_after_s), 2),
+            ended_by_whistle=True,
+            server_guess="unknown", server_confidence=0.0,
+            winner_guess="unknown", winner_confidence=0.0,
+        )
+        for i, (a, b) in enumerate(pair_whistles(kept, p))
+    ]
+    debug = {"mode": "whistle", "whistles": raw, "whistles_kept": kept}
+    return points, debug
+
+
 def detect_points(mdir: Path, p: RallyParams | None = None,
-                  whistle_params: audio.WhistleParams | None = None) -> tuple[list[Point], dict]:
+                  whistle_params: audio.WhistleParams | None = None,
+                  mode: str = "motion") -> tuple[list[Point], dict]:
     p = p or RallyParams()
+    if mode == "whistle":
+        return detect_points_from_whistles(mdir, p, whistle_params)
     meta = json.loads((mdir / "meta.json").read_text())
     rate = float(meta["frame_rate_sampled"])
     duration = float(meta["duration_s"])
@@ -141,6 +207,7 @@ def detect_points(mdir: Path, p: RallyParams | None = None,
         cur.winner_confidence = nxt.server_confidence
 
     debug = {
+        "mode": "motion",
         "rate": rate,
         "whistles": whistles,
         "motion_total": sig["total"].round(3).tolist(),
@@ -168,21 +235,28 @@ def cut_clips(mdir: Path, points: list[Point]) -> None:
 
 
 def run(match_id: str, root: Path = DATA_DIR, clips: bool = True,
-        p: RallyParams | None = None) -> list[Point]:
+        p: RallyParams | None = None, mode: str = "whistle") -> list[Point]:
     mdir = match_dir(match_id, root)
     if not (mdir / "meta.json").exists():
         raise SystemExit(f"No ingested match at {mdir}. Run `vb ingest` first.")
-    points, debug = detect_points(mdir, p)
+    points, debug = detect_points(mdir, p, mode=mode)
     if clips and points and (mdir / "video.mp4").exists():
         print(f"Cutting {len(points)} clips ...")
         cut_clips(mdir, points)
     (mdir / "points.json").write_text(json.dumps([asdict(x) for x in points], indent=2))
     (mdir / "rally_debug.json").write_text(json.dumps(debug))
-    print(f"Found {len(points)} points and {len(debug['whistles'])} whistles.")
-    for pt in points:
-        print(f"  #{pt.index:>3}  {fmt(pt.start_s)}-{fmt(pt.end_s)}  "
-              f"server={pt.server_guess:<4} winner={pt.winner_guess:<7} "
-              f"({pt.winner_confidence:.2f}){'  whistle' if pt.ended_by_whistle else ''}")
+    if mode == "whistle":
+        print(f"Found {len(points)} points from {len(debug['whistles_kept'])} whistles "
+              f"({len(debug['whistles']) - len(debug['whistles_kept'])} short sounds ignored).")
+        for pt in points:
+            print(f"  #{pt.index:>3}  serve whistle {fmt(pt.start_s)}  end whistle {fmt(pt.end_s)}  "
+                  f"clip {fmt(pt.clip_start_s)}-{fmt(pt.clip_end_s)}")
+    else:
+        print(f"Found {len(points)} points and {len(debug['whistles'])} whistles.")
+        for pt in points:
+            print(f"  #{pt.index:>3}  {fmt(pt.start_s)}-{fmt(pt.end_s)}  "
+                  f"server={pt.server_guess:<4} winner={pt.winner_guess:<7} "
+                  f"({pt.winner_confidence:.2f}){'  whistle' if pt.ended_by_whistle else ''}")
     return points
 
 

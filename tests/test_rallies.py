@@ -2,7 +2,8 @@
 
 The fake match is 60 s at 5 frames per second. Three rallies have moving
 blocks on court; the serve happens on the near side (bottom), then far side,
-then near side again. A 3 kHz whistle sounds just after each rally.
+then near side again. A 3 kHz whistle sounds a few seconds before each serve and just after each
+rally ends. Short squeak-like blips happen during rallies.
 """
 import json
 import math
@@ -20,7 +21,10 @@ from vbtool import audio, rallies
 RATE = 5
 DURATION = 60
 RALLIES = [(5, 15, "near"), (25, 37, "far"), (45, 55, "near")]
-WHISTLES = [15.6, 37.6, 55.6]
+END_WHISTLES = [15.6, 37.6, 55.6]
+SERVE_WHISTLES = [2.0, 22.0, 42.0]
+WHISTLES = sorted(END_WHISTLES + SERVE_WHISTLES)
+SQUEAKS = [8.0, 30.0, 48.0]   # short 3 kHz blips, like shoe squeaks
 W, H = 320, 180
 
 
@@ -54,6 +58,9 @@ def write_match(mdir, near_scale=1):
     for w in WHISTLES:
         m = (t >= w) & (t < w + 0.5)
         x[m] += 0.5 * np.sin(2 * np.pi * 3000 * t[m])
+    for q in SQUEAKS:
+        m = (t >= q) & (t < q + 0.2)
+        x[m] += 0.5 * np.sin(2 * np.pi * 3000 * t[m])
     pcm = (np.clip(x, -1, 1) * 32767).astype(np.int16)
     with wave.open(str(mdir / "audio.wav"), "wb") as f:
         f.setnchannels(1)
@@ -75,10 +82,29 @@ def match(tmp_path):
 
 
 def test_whistles_found(match):
-    found = audio.detect_whistles(match / "audio.wav")
-    assert len(found) == 3
+    found = rallies.clean_whistles(audio.detect_whistles(match / "audio.wav"), rallies.RallyParams())
+    assert len(found) == len(WHISTLES)
     for (a, _), w in zip(found, WHISTLES):
         assert abs(a - w) < 0.1
+
+
+def test_whistle_mode_points(match):
+    points, debug = rallies.detect_points(match, mode="whistle")
+    assert len(debug["whistles"]) == 9          # includes the squeaks
+    assert len(debug["whistles_kept"]) == 6     # squeaks dropped
+    assert len(points) == 3
+    for pt, s, e in zip(points, SERVE_WHISTLES, END_WHISTLES):
+        assert abs(pt.start_s - s) < 0.1
+        assert abs(pt.end_s - e) < 0.1
+        assert abs(pt.clip_start_s - (s - 2)) < 0.1
+        assert abs(pt.clip_end_s - (e + 2)) < 0.1
+
+
+def test_pairing_recovers_after_missed_whistle():
+    p = rallies.RallyParams()
+    # 10 serve, 18 end, 30 serve, [end whistle missed], 95 serve, 104 end
+    ws = [(10, 11), (18, 19), (30, 31), (95, 96), (104, 105)]
+    assert rallies.pair_whistles(ws, p) == [(10, 18), (95, 104)]
 
 
 def test_points_detected(match):
@@ -101,7 +127,7 @@ def test_run_writes_points_and_clips(match):
          "-pix_fmt", "yuv420p", "-shortest", str(match / "video.mp4")],
         check=True,
     )
-    rallies.run("synthetic", root=match.parent)
+    rallies.run("synthetic", root=match.parent, mode="whistle")
     saved = json.loads((match / "points.json").read_text())
     assert len(saved) == 3
     for pt in saved:

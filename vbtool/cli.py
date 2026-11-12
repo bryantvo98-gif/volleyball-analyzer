@@ -20,6 +20,13 @@ def main(argv: list[str] | None = None) -> None:
 
     ral = sub.add_parser("rallies", help="Find points in an ingested match and cut a clip for each")
     ral.add_argument("match_id", help="Match id used with `vb ingest`")
+    ral.add_argument("--mode", choices=["whistle", "motion"], default="whistle",
+                     help="whistle (default): points run from serve whistle to end whistle. "
+                          "motion: older approach for videos without whistles")
+    ral.add_argument("--min-whistle", type=float, default=0.45,
+                     help="Ignore whistle-like sounds shorter than this many seconds (default 0.45)")
+    ral.add_argument("--pad", type=float, default=2.0,
+                     help="Seconds of video to keep before and after each point (default 2)")
     ral.add_argument("--no-clips", action="store_true", help="Skip cutting clips (faster, for tuning)")
     ral.add_argument("--threshold", type=float, default=0.4,
                      help="Motion threshold between quiet (0) and busy (1) levels (default 0.4)")
@@ -34,8 +41,9 @@ def main(argv: list[str] | None = None) -> None:
                      frame_rate=args.fps, frame_width=args.width)
     elif args.cmd == "rallies":
         params = rallies.RallyParams(threshold_mix=args.threshold, min_rally_s=args.min_rally,
-                                     net_y=args.net_y)
-        rallies.run(args.match_id, root=args.data, clips=not args.no_clips, p=params)
+                                     net_y=args.net_y, min_whistle_s=args.min_whistle,
+                                     clip_pad_before_s=args.pad, clip_pad_after_s=args.pad)
+        rallies.run(args.match_id, root=args.data, clips=not args.no_clips, p=params, mode=args.mode)
 
 
 if __name__ == "__main__":

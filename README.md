@@ -66,26 +66,29 @@ vb rallies g5GqP4kEs_0
 ```
 
 This finds each point and writes `points.json` plus one clip per point in
-`clips/`. It prints a line per point with its start and end time, who it thinks
-served and who it thinks won.
+`clips/`. It prints one line per point with the serve whistle, end whistle and
+clip times.
 
-How it decides:
+How it decides (default whistle mode):
 
-- **Rally start and end**: a rally is a stretch of high motion on court. The
-  cutoff adapts to each video. If a referee whistle comes within 3 seconds of the
-  motion stopping, the end moves to the whistle.
-- **Who served**: where the motion is in the first 1.5 seconds. A near-side serve
-  shows up at the bottom of the frame.
-- **Who won**: with rally scoring, the next point's server won this point. The
-  last point is left as unknown for you to fill in.
+- **Whistles**: a loud, steady tone between about 2 and 4.5 kHz lasting at
+  least 0.45 seconds. Shorter sounds, such as shoe squeaks, are ignored.
+  Whistles less than 2 seconds apart count as one.
+- **Points**: whistles alternate between "serve" and "point over". A point
+  runs from a serve whistle to the next whistle. If that would be longer than
+  40 seconds (a missed whistle or a timeout), the tool starts pairing again
+  from the later whistle.
+- **Clips**: from 2 seconds before the serve whistle to 2 seconds after the
+  end whistle, so the serve and the finish are always included.
+- Who served and who won are not guessed yet. That needs ball tracking.
 
-Tuning, if points are merged, split or missed:
+Options:
 
-- `--threshold 0.3` catches quieter rallies, `0.5` ignores more walking around.
-- `--min-rally 2` keeps very short points such as aces and service errors.
-- `--net-y 0.45` sets where the net sits in the image (0 is the top), which
-  matters for the serve guess.
+- `--min-whistle 0.6` ignores more short sounds if squeaks still get through.
+- `--pad 3` keeps 3 seconds before and after each point instead of 2.
 - `--no-clips` skips clip cutting so you can retune quickly.
+- `--mode motion` uses the older motion-based approach, for videos without a
+  referee.
 
 ## Tests
 

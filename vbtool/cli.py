@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from . import media, rallies
+from . import media, rallies, stitch
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -36,6 +36,10 @@ def main(argv: list[str] | None = None) -> None:
                      help="Net height in the image, 0 = top, 1 = bottom (default 0.5)")
     ral.add_argument("--data", type=Path, default=media.DATA_DIR, help="Where match folders live")
 
+    st = sub.add_parser("stitch", help="Rebuild the all_points.mp4 review video from existing clips")
+    st.add_argument("match_id", help="Match id used with `vb ingest`")
+    st.add_argument("--data", type=Path, default=media.DATA_DIR, help="Where match folders live")
+
     args = p.parse_args(argv)
     if args.cmd == "ingest":
         media.ingest(args.source, match_id=args.match_id, root=args.data,
@@ -45,6 +49,9 @@ def main(argv: list[str] | None = None) -> None:
                                      net_y=args.net_y, min_whistle_s=args.min_whistle,
                                      clip_pad_before_s=args.pad, clip_pad_after_s=args.pad)
         rallies.run(args.match_id, root=args.data, clips=not args.no_clips, p=params, mode=args.mode)
+    elif args.cmd == "stitch":
+        out = stitch.stitch(media.match_dir(args.match_id, args.data))
+        print(f"Review video: {out}" if out else "No clips found. Run `vb rallies` first.")
 
 
 if __name__ == "__main__":

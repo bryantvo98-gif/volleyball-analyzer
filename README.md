@@ -65,8 +65,11 @@ folder is not committed to git.
 vb rallies g5GqP4kEs_0
 ```
 
-This finds each point and writes `points.json` plus one clip per point in
-`clips/`. It prints one line per point with the serve whistle, end whistle and
+This finds each point and writes `points.json`, one clip per point in
+`clips/`, and `all_points.mp4`: every clip back to back, with the point number
+and its start time in the original video shown in the top right corner. Use it
+to skim the whole match and spot wrong clips quickly. `vb stitch <id>` rebuilds
+just that video. It prints one line per point with the serve whistle, end whistle and
 clip times.
 
 How it decides (default whistle mode):

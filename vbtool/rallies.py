@@ -28,7 +28,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import audio, motion
+from . import audio, motion, stitch
 from .media import DATA_DIR, match_dir, require_tool
 
 
@@ -269,6 +269,11 @@ def run(match_id: str, root: Path = DATA_DIR, clips: bool = True,
         print(f"Cutting {len(points)} clips ...")
         cut_clips(mdir, points)
     (mdir / "points.json").write_text(json.dumps([asdict(x) for x in points], indent=2))
+    if clips and points and (mdir / "video.mp4").exists():
+        print("Stitching all clips into one review video ...")
+        out = stitch.stitch(mdir)
+        if out:
+            print(f"Review video: {out}")
     (mdir / "rally_debug.json").write_text(json.dumps(debug))
     if mode == "whistle":
         print(f"Found {len(points)} points from {len(debug['whistles_kept'])} whistles "

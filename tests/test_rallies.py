@@ -131,6 +131,11 @@ def test_run_writes_points_and_clips(match):
     assert len(saved) == 3
     for pt in saved:
         assert (match / pt["clip"]).stat().st_size > 0
+    from vbtool.media import probe
+    review = match / "all_points.mp4"
+    assert review.exists()
+    clip_total = sum(probe(match / pt["clip"])["duration_s"] for pt in saved)
+    assert abs(probe(review)["duration_s"] - clip_total) < 1.0
 
 
 def test_server_guess_with_bigger_near_players(tmp_path):

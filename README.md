@@ -28,7 +28,7 @@ One time only. Run each line on its own in Terminal.
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-/opt/homebrew/bin/brew shellenv zsh > ~/.zprofile
+echo 'export PATH=/opt/homebrew/bin:$PATH' > ~/.zprofile
 source ~/.zprofile
 brew install python ffmpeg gh
 gh auth login

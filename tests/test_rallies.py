@@ -164,3 +164,15 @@ def test_timeout_whistle_is_ignored():
         (86.0, 87.0, 1.0), (95.0, 95.8, 0.8),    # point
     ]
     assert rallies.pair_whistles(ws, p) == [(10.0, 20.0), (86.0, 95.0)]
+
+
+def test_rerun_does_not_overwrite_review(match):
+    rallies.run("synthetic", root=match.parent, clips=False)
+    pts = json.loads((match / "points.json").read_text())
+    pts[0]["extra"] = {"winner": "near"}
+    (match / "points.json").write_text(json.dumps(pts))
+    with pytest.raises(SystemExit):
+        rallies.run("synthetic", root=match.parent, clips=False)
+    assert json.loads((match / "points.json").read_text())[0]["extra"] == {"winner": "near"}
+    rallies.run("synthetic", root=match.parent, clips=False, force=True)
+    assert (match / "points.reviewed-backup.json").exists()

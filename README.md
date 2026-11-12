@@ -10,7 +10,7 @@ involved, and lets you confirm or fix those guesses before building a match summ
    into frames and audio.
 2. **Find the rallies** (done): detect point start and end from ball movement plus
    whistle and crowd audio, cut a clip per point, guess which side won.
-3. **Identify players and review points** (local web pages):
+3. **Identify players and review points** (local web pages; points screen done):
    - *Players screen*: the tool groups near-side players by outfit (colour and
      look of top, shorts, shoes and so on) and shows a gallery for each one.
      You name them, merge duplicates and split mix-ups.
@@ -100,6 +100,36 @@ Options:
 - `--no-clips` skips clip cutting so you can retune quickly.
 - `--mode motion` uses the older motion-based approach, for videos without a
   referee.
+
+### Review and fix points
+
+```bash
+vb review g5GqP4kEs_0
+```
+
+Opens a review screen in your browser (it runs only on your Mac). Pick a point
+on the right and its clip plays in the full match video. For each point you can:
+
+- **Fix it**: "Not a point", "Merge with next", "Split here" (at the current
+  video time), "Add a point here", or move the start or end by half a second or
+  to the current video time.
+- **Record it**: who won (near = your team, far = the other team), what ended
+  it (ace, kill, service error, attack error, block and so on), whether a near
+  or far player did it, the near-side player's name, and notes.
+
+The running score shows at the top. Changes save automatically to
+`points.json`, and the tool's original guesses are kept in `points.auto.json`.
+Press Control+C in Terminal when you're done. Keyboard shortcuts are listed
+under the video.
+
+After fixing points, recut the clips and the stitched video:
+
+```bash
+vb clips g5GqP4kEs_0
+```
+
+`vb rallies` won't overwrite points you've reviewed unless you add `--force`
+(and it keeps a backup).
 
 ## Tests
 

@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Point review</title>
+<style>
+  :root { --bg:#f6f6f4; --panel:#fff; --ink:#1d1d1f; --muted:#6b6b70; --line:#e2e2e0;
+          --near:#2f6fdb; --far:#d4682a; --ok:#2e8b57; --warn:#b8860b; --bad:#c0392b; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:var(--ink); background:var(--bg); }
+  header { display:flex; align-items:center; gap:16px; padding:10px 16px; background:var(--panel); border-bottom:1px solid var(--line); }
+  header h1 { font-size:16px; margin:0; font-weight:600; }
+  .score { font-size:20px; font-weight:700; letter-spacing:.5px; }
+  .score .n { color:var(--near); } .score .f { color:var(--far); }
+  .saved { margin-left:auto; color:var(--muted); font-size:12px; }
+  main { display:grid; grid-template-columns: 1fr 360px; gap:12px; padding:12px; height:calc(100vh - 52px); }
+  .left { display:flex; flex-direction:column; gap:8px; min-width:0; }
+  video { width:100%; max-height:55vh; background:#000; border-radius:8px; }
+  .timeline { position:relative; height:28px; background:#e9e9e6; border-radius:6px; cursor:pointer; }
+  .timeline .seg { position:absolute; top:4px; bottom:4px; border-radius:3px; background:#9aa4b5; }
+  .timeline .seg.near { background:var(--near); } .timeline .seg.far { background:var(--far); }
+  .timeline .seg.sel { outline:2px solid var(--ink); }
+  .timeline .head { position:absolute; top:0; bottom:0; width:2px; background:var(--bad); }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; }
+  .row { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:6px 0; }
+  .row label { color:var(--muted); min-width:70px; }
+  button { font:inherit; padding:6px 10px; border-radius:6px; border:1px solid var(--line); background:#fff; cursor:pointer; }
+  button:hover { background:#f0f0ee; }
+  button.on.near { background:var(--near); color:#fff; border-color:var(--near); }
+  button.on.far { background:var(--far); color:#fff; border-color:var(--far); }
+  button.danger { color:var(--bad); }
+  select, input[type=text] { font:inherit; padding:5px 8px; border:1px solid var(--line); border-radius:6px; min-width:180px; }
+  .time { font-variant-numeric:tabular-nums; min-width:56px; display:inline-block; }
+  .list { overflow:auto; background:var(--panel); border:1px solid var(--line); border-radius:8px; }
+  .item { display:grid; grid-template-columns: 34px 1fr auto; gap:6px; padding:8px 10px; border-bottom:1px solid var(--line); cursor:pointer; }
+  .item:hover { background:#fafaf8; }
+  .item.sel { background:#eef3fd; }
+  .item .num { font-weight:700; }
+  .item .sub { color:var(--muted); font-size:12px; }
+  .badge { font-size:11px; padding:2px 6px; border-radius:10px; align-self:start; white-space:nowrap; }
+  .badge.near { background:#e3ecfb; color:var(--near); } .badge.far { background:#fbe9df; color:var(--far); }
+  .badge.todo { background:#f1f1ef; color:var(--muted); }
+  .warn { color:var(--warn); font-size:12px; }
+  .keys { color:var(--muted); font-size:12px; }
+  kbd { background:#f1f1ef; border:1px solid var(--line); border-radius:4px; padding:0 4px; font-size:11px; }
+  .toast { position:fixed; top:60px; right:16px; background:var(--ink); color:#fff; padding:8px 14px; border-radius:8px; display:none; gap:12px; align-items:center; }
+  .toast button { background:transparent; color:#fff; border-color:#666; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Point review</h1>
+  <div class="score"><span class="n" id="scoreN">0</span> – <span class="f" id="scoreF">0</span></div>
+  <div class="keys">Near (your team) – Far</div>
+  <div class="saved" id="saved">Loading…</div>
+</header>
+<main>
+  <div class="left">
+    <video id="video" src="/video" controls preload="auto" playsinline></video>
+    <div class="timeline" id="timeline"><div class="head" id="head"></div></div>
+    <div class="panel" id="detail">
+      <div class="row">
+        <strong id="dTitle">No point selected</strong>
+        <span class="warn" id="dWarn"></span>
+      </div>
+      <div class="row">
+        <label>Start</label>
+        <button data-nudge="start:-0.5">−½s</button><span class="time" id="dStart"></span><button data-nudge="start:0.5">+½s</button>
+        <button id="setStart" title="[">Start = now</button>
+        <label style="margin-left:12px">End</label>
+        <button data-nudge="end:-0.5">−½s</button><span class="time" id="dEnd"></span><button data-nudge="end:0.5">+½s</button>
+        <button id="setEnd" title="]">End = now</button>
+      </div>
+      <div class="row">
+        <label>Won by</label>
+        <button class="near" id="winNear" title="1">Near (your team)</button>
+        <button class="far" id="winFar" title="2">Far</button>
+      </div>
+      <div class="row">
+        <label>Ended by</label>
+        <select id="action"></select>
+        <span class="sub">done by</span>
+        <button class="near" id="byNear">Near player</button>
+        <button class="far" id="byFar">Far player</button>
+      </div>
+      <div class="row">
+        <label>Player</label>
+        <input type="text" id="player" list="playerNames" placeholder="Near-side player (optional)">
+        <datalist id="playerNames"></datalist>
+        <input type="text" id="notes" placeholder="Notes" style="flex:1">
+      </div>
+      <div class="row">
+        <button class="danger" id="del" title="X">Not a point</button>
+        <button id="merge" title="M">Merge with next</button>
+        <button id="split" title="S">Split here</button>
+        <button id="add" title="A">Add a point here</button>
+        <label style="min-width:0;margin-left:auto"><input type="checkbox" id="autoNext" checked> Go to next point when a clip ends</label>
+      </div>
+      <div class="keys">
+        <kbd>Space</kbd> play/pause · <kbd>←</kbd><kbd>→</kbd> 1s (<kbd>Shift</kbd> 5s) · <kbd>↑</kbd><kbd>↓</kbd> previous/next point ·
+        <kbd>[</kbd> <kbd>]</kbd> start/end = now · <kbd>1</kbd> near won · <kbd>2</kbd> far won ·
+        <kbd>X</kbd> not a point · <kbd>M</kbd> merge · <kbd>S</kbd> split · <kbd>A</kbd> add
+      </div>
+    </div>
+  </div>
+  <div class="list" id="list"></div>
+</main>
+<div class="toast" id="toast"><span id="toastMsg"></span><button id="undo">Undo</button></div>
+
+<script>
+const ACTIONS = [
+  ["", "— choose —"],
+  ["ace", "Ace (serve not returned)"],
+  ["service_error", "Service error"],
+  ["kill", "Kill (attack scored)"],
+  ["tip", "Tip / dump scored"],
+  ["block", "Block scored"],
+  ["attack_error", "Attack error (out or into net)"],
+  ["blocked", "Attack blocked"],
+  ["reception_error", "Serve-receive error"],
+  ["defense_error", "Dig / defense error"],
+  ["ball_handling", "Ball-handling error (double, lift)"],
+  ["net_violation", "Net touch / center-line violation"],
+  ["free_ball_error", "Free ball / overpass error"],
+  ["rotation", "Rotation fault"],
+  ["other", "Other"],
+];
+const PAD = 2.0;
+const v = document.getElementById("video");
+let points = [], sel = -1, meta = {}, undoStack = [], saveTimer = null;
+
+const $ = id => document.getElementById(id);
+const fmt = t => { if (t == null) return ""; const m = Math.floor(t / 60), s = t - m * 60; return `${m}:${s.toFixed(1).padStart(4, "0")}`; };
+const actionLabel = a => (ACTIONS.find(x => x[0] === a) || ["", ""])[1];
+
+function snapshot() { undoStack.push(JSON.stringify(points)); if (undoStack.length > 50) undoStack.shift(); }
+function toast(msg) {
+  $("toastMsg").textContent = msg; $("toast").style.display = "flex";
+  clearTimeout(toast.t); toast.t = setTimeout(() => $("toast").style.display = "none", 6000);
+}
+$("undo").onclick = () => {
+  if (!undoStack.length) return;
+  points = JSON.parse(undoStack.pop()); $("toast").style.display = "none";
+  sel = Math.min(sel, points.length - 1); changed(false);
+};
+
+function newPoint(start, end) {
+  return { index: 0, start_s: start, end_s: end, clip_start_s: Math.max(0, start - PAD), clip_end_s: end + PAD,
+    ended_by_whistle: false, server_guess: "unknown", server_confidence: 0, winner_guess: "unknown",
+    winner_confidence: 0, clip: null, reviewed: false, end_action: null, player: null, notes: "", extra: {} };
+}
+function fixClip(p) { p.start_s = Math.max(0, +p.start_s.toFixed(2)); p.end_s = +p.end_s.toFixed(2);
+  p.clip_start_s = +Math.max(0, p.start_s - PAD).toFixed(2); p.clip_end_s = +(p.end_s + PAD).toFixed(2); p.clip = null; }
+function winner(p) { return (p.extra && p.extra.winner) || null; }
+function setExtra(p, k, val) { p.extra = p.extra || {}; p.extra[k] = val; }
+function complete(p) { return !!(winner(p) && p.end_action); }
+
+function changed(doSave = true) {
+  points.sort((a, b) => a.start_s - b.start_s);
+  points.forEach((p, i) => { p.index = i + 1; p.reviewed = complete(p); });
+  render();
+  if (doSave) scheduleSave(); else scheduleSave();
+}
+function scheduleSave() {
+  $("saved").textContent = "Saving…";
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try {
+      const r = await fetch("/api/points", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(points) });
+      if (!r.ok) throw new Error(r.status);
+      $("saved").textContent = "All changes saved";
+    } catch (e) { $("saved").textContent = "Couldn't save. Is Terminal still running vb review?"; }
+  }, 400);
+}
+
+function render() {
+  // score + list
+  let n = 0, f = 0, done = 0;
+  const list = $("list"); list.innerHTML = "";
+  points.forEach((p, i) => {
+    const w = winner(p);
+    if (w === "near") n++; if (w === "far") f++;
+    if (complete(p)) done++;
+    const el = document.createElement("div");
+    el.className = "item" + (i === sel ? " sel" : "");
+    const badge = w ? `<span class="badge ${w}">${w === "near" ? "Near" : "Far"} ${n}-${f}</span>` : `<span class="badge todo">to review</span>`;
+    el.innerHTML = `<div class="num">${p.index}</div>
+      <div><div>${fmt(p.start_s)} – ${fmt(p.end_s)} <span class="sub">(${(p.end_s - p.start_s).toFixed(0)}s)</span></div>
+      <div class="sub">${p.end_action ? actionLabel(p.end_action) : ""}${p.player ? " · " + p.player : ""}${!p.ended_by_whistle && !p.reviewed && p.clip !== null ? " · no end whistle heard" : ""}</div></div>${badge}`;
+    el.onclick = () => select(i, true);
+    list.appendChild(el);
+  });
+  $("scoreN").textContent = n; $("scoreF").textContent = f;
+  $("title").textContent = `Point review · ${points.length} points · ${done} done`;
+  // timeline
+  const tl = $("timeline"), dur = v.duration || meta.duration_s || 1;
+  tl.querySelectorAll(".seg").forEach(e => e.remove());
+  points.forEach((p, i) => {
+    const s = document.createElement("div");
+    s.className = "seg " + (winner(p) || "") + (i === sel ? " sel" : "");
+    s.style.left = (100 * p.start_s / dur) + "%"; s.style.width = Math.max(0.2, 100 * (p.end_s - p.start_s) / dur) + "%";
+    s.title = `Point ${p.index}`;
+    s.onclick = ev => { ev.stopPropagation(); select(i, true); };
+    tl.appendChild(s);
+  });
+  renderDetail();
+}
+
+function renderDetail() {
+  const p = points[sel];
+  const disabled = !p;
+  document.querySelectorAll("#detail button, #detail select, #detail input[type=text]").forEach(e => {
+    if (!["add"].includes(e.id)) e.disabled = disabled; });
+  if (!p) { $("dTitle").textContent = "No point selected"; return; }
+  $("dTitle").textContent = `Point ${p.index}`;
+  $("dWarn").textContent = (!p.ended_by_whistle && p.clip !== null) ? "No end whistle was heard, so the end is a guess. Check it." : "";
+  $("dStart").textContent = fmt(p.start_s); $("dEnd").textContent = fmt(p.end_s);
+  const w = winner(p), by = p.extra && p.extra.by;
+  $("winNear").classList.toggle("on", w === "near"); $("winFar").classList.toggle("on", w === "far");
+  $("byNear").classList.toggle("on", by === "near"); $("byFar").classList.toggle("on", by === "far");
+  $("action").value = p.end_action || "";
+  if (document.activeElement !== $("player")) $("player").value = p.player || "";
+  if (document.activeElement !== $("notes")) $("notes").value = p.notes || "";
+  // player suggestions: roster + names already used
+  const names = new Set((meta.players || []).map(x => x.name || x));
+  points.forEach(q => q.player && names.add(q.player));
+  $("playerNames").innerHTML = [...names].map(x => `<option value="${x}">`).join("");
+}
+
+function select(i, play) {
+  sel = Math.max(-1, Math.min(points.length - 1, i));
+  render();
+  const p = points[sel];
+  if (p && play) { v.currentTime = p.clip_start_s; v.play().catch(() => {}); }
+  const el = $("list").children[sel]; if (el) el.scrollIntoView({ block: "nearest" });
+}
+
+// playback: stop or advance at the end of the selected clip
+v.addEventListener("timeupdate", () => {
+  const dur = v.duration || 1; $("head").style.left = (100 * v.currentTime / dur) + "%";
+  const p = points[sel];
+  if (p && !v.paused && v.currentTime >= p.clip_end_s && v.currentTime < p.clip_end_s + 1) {
+    if ($("autoNext").checked && sel < points.length - 1) select(sel + 1, true); else v.pause();
+  }
+});
+v.addEventListener("loadedmetadata", render);
+$("timeline").onclick = ev => {
+  const r = ev.currentTarget.getBoundingClientRect(); v.currentTime = (ev.clientX - r.left) / r.width * (v.duration || 0);
+};
+
+// editing
+function edit(fn, msg) { const p = points[sel]; if (!p) return; snapshot(); fn(p); changed(); if (msg) toast(msg); }
+document.querySelectorAll("[data-nudge]").forEach(b => b.onclick = () => {
+  const [k, d] = b.dataset.nudge.split(":"); edit(p => { p[k + "_s"] += +d; fixClip(p); });
+});
+$("setStart").onclick = () => edit(p => { p.start_s = v.currentTime; fixClip(p); });
+$("setEnd").onclick = () => edit(p => { p.end_s = v.currentTime; p.ended_by_whistle = true; fixClip(p); });
+$("winNear").onclick = () => edit(p => setExtra(p, "winner", winner(p) === "near" ? null : "near"));
+$("winFar").onclick = () => edit(p => setExtra(p, "winner", winner(p) === "far" ? null : "far"));
+$("byNear").onclick = () => edit(p => setExtra(p, "by", p.extra && p.extra.by === "near" ? null : "near"));
+$("byFar").onclick = () => edit(p => setExtra(p, "by", p.extra && p.extra.by === "far" ? null : "far"));
+$("action").onchange = e => edit(p => { p.end_action = e.target.value || null; });
+$("player").onchange = e => edit(p => { p.player = e.target.value.trim() || null; });
+$("notes").onchange = e => edit(p => { p.notes = e.target.value; });
+$("del").onclick = () => { if (sel < 0) return; snapshot(); const n = points[sel].index; points.splice(sel, 1);
+  sel = Math.min(sel, points.length - 1); changed(); toast(`Removed point ${n}`); };
+$("merge").onclick = () => { if (sel < 0 || sel >= points.length - 1) return; snapshot();
+  const a = points[sel], b = points[sel + 1]; a.end_s = b.end_s; a.ended_by_whistle = b.ended_by_whistle; fixClip(a);
+  points.splice(sel + 1, 1); changed(); toast(`Merged points ${a.index} and ${a.index + 1}`); };
+$("split").onclick = () => { const p = points[sel]; if (!p) return; const t = v.currentTime;
+  if (t <= p.start_s + 1 || t >= p.end_s - 1) { toast("Move the video inside the point first, to where it should split."); return; }
+  snapshot(); const q = newPoint(t, p.end_s); q.ended_by_whistle = p.ended_by_whistle;
+  p.end_s = t; p.ended_by_whistle = true; fixClip(p); fixClip(q); points.push(q); changed(); toast(`Split point ${p.index} at ${fmt(t)}`); };
+$("add").onclick = () => { snapshot(); const t = v.currentTime; const q = newPoint(t, Math.min(t + 8, v.duration || t + 8));
+  q.ended_by_whistle = true; fixClip(q); points.push(q); changed();
+  sel = points.indexOf(q); render(); toast(`Added a point at ${fmt(t)}. Set its start and end.`); };
+
+document.addEventListener("keydown", e => {
+  if (["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) return;
+  const k = e.key, step = e.shiftKey ? 5 : 1;
+  const map = {
+    " ": () => (v.paused ? v.play() : v.pause()),
+    "ArrowLeft": () => v.currentTime -= step, "ArrowRight": () => v.currentTime += step,
+    "ArrowUp": () => select(sel - 1, true), "ArrowDown": () => select(sel + 1, true),
+    "[": () => $("setStart").click(), "]": () => $("setEnd").click(),
+    "1": () => $("winNear").click(), "2": () => $("winFar").click(),
+    "x": () => $("del").click(), "m": () => $("merge").click(), "s": () => $("split").click(), "a": () => $("add").click(),
+  };
+  const fn = map[k] || map[k.toLowerCase()];
+  if (fn) { e.preventDefault(); fn(); }
+});
+
+(async () => {
+  meta = await (await fetch("/api/meta")).json();
+  points = await (await fetch("/api/points")).json();
+  $("action").innerHTML = ACTIONS.map(([k, l]) => `<option value="${k}">${l}</option>`).join("");
+  $("saved").textContent = "All changes saved";
+  points.forEach(p => { p.extra = p.extra || {}; });
+  select(0, false);
+})();
+</script>
+</body>
+</html>

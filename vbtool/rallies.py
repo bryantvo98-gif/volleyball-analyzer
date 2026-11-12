@@ -367,13 +367,44 @@ def cut_clips(mdir: Path, points: list[Point]) -> None:
         pt.clip = f"clips/{name}"
 
 
+def recut(match_id: str, root: Path = DATA_DIR) -> None:
+    """Recut every clip and the stitched video from points.json (after review)."""
+    mdir = match_dir(match_id, root)
+    data = json.loads((mdir / "points.json").read_text())
+    points = [Point(**d) for d in data]
+    clips_dir = mdir / "clips"
+    if clips_dir.exists():
+        for old in clips_dir.glob("point_*.mp4"):
+            old.unlink()
+    print(f"Cutting {len(points)} clips ...")
+    cut_clips(mdir, points)
+    (mdir / "points.json").write_text(json.dumps([asdict(x) for x in points], indent=2))
+    out = stitch.stitch(mdir)
+    if out:
+        print(f"Review video: {out}")
+
+
 def run(match_id: str, root: Path = DATA_DIR, clips: bool = True,
-        p: RallyParams | None = None, mode: str = "whistle") -> list[Point]:
+        p: RallyParams | None = None, mode: str = "whistle", force: bool = False) -> list[Point]:
     mdir = match_dir(match_id, root)
     if not (mdir / "meta.json").exists():
         raise SystemExit(f"No ingested match at {mdir}. Run `vb ingest` first.")
+    existing = mdir / "points.json"
+    if existing.exists():
+        old = json.loads(existing.read_text())
+        if any(pt.get("reviewed") or (pt.get("extra") or {}).get("winner") for pt in old):
+            if not force:
+                raise SystemExit(
+                    "You've already reviewed some points for this match, and running this again "
+                    "would replace them.\nTo keep your review, use `vb clips` to recut clips instead. "
+                    "To start over anyway, add --force (a backup of your review is kept).")
+            backup = mdir / "points.reviewed-backup.json"
+            backup.write_text(existing.read_text())
+            print(f"Backed up your reviewed points to {backup}")
     points, debug = detect_points(mdir, p, mode=mode)
     if clips and points and (mdir / "video.mp4").exists():
+        for stale in (mdir / "clips").glob("point_*.mp4"):
+            stale.unlink()
         print(f"Cutting {len(points)} clips ...")
         cut_clips(mdir, points)
     (mdir / "points.json").write_text(json.dumps([asdict(x) for x in points], indent=2))

@@ -24,7 +24,7 @@ WHISTLES = [15.6, 37.6, 55.6]
 W, H = 320, 180
 
 
-def frame_at(t, rng):
+def frame_at(t, rng, near_scale=1):
     img = np.full((H, W), 90, dtype=np.uint8)
     img += rng.integers(0, 3, size=img.shape, dtype=np.uint8)  # sensor noise
     for a, b, server in RALLIES:
@@ -34,19 +34,20 @@ def frame_at(t, rng):
             # Blocks that move fast: on the server's side only during the serve
             halves = [server] if serving else ["near", "far"]
             for side in halves:
-                y0 = H // 2 + 20 if side == "near" else 20
-                x = int((math.sin(phase) * 0.5 + 0.5) * (W - 40))
-                img[y0:y0 + 40, x:x + 40] = 240
+                size = 20 * near_scale if side == "near" else 20
+                y0 = H // 2 + 10 if side == "near" else 20
+                x = int((math.sin(phase) * 0.5 + 0.5) * (W - size))
+                img[y0:y0 + size, x:x + size] = 240
     return img
 
 
-def write_match(mdir):
+def write_match(mdir, near_scale=1):
     rng = np.random.default_rng(0)
     frames = mdir / "frames"
     frames.mkdir(parents=True)
     n = DURATION * RATE
     for i in range(n):
-        Image.fromarray(frame_at(i / RATE, rng)).save(frames / f"{i + 1:06d}.jpg", quality=90)
+        Image.fromarray(frame_at(i / RATE, rng, near_scale)).save(frames / f"{i + 1:06d}.jpg", quality=90)
     sr = 16000
     t = np.arange(DURATION * sr) / sr
     x = rng.normal(0, 0.01, size=t.shape)  # crowd hiss
@@ -105,3 +106,11 @@ def test_run_writes_points_and_clips(match):
     assert len(saved) == 3
     for pt in saved:
         assert (match / pt["clip"]).stat().st_size > 0
+
+
+def test_server_guess_with_bigger_near_players(tmp_path):
+    """Near players look bigger on camera; far serves must still be found."""
+    mdir = tmp_path / "matches" / "perspective"
+    write_match(mdir, near_scale=3)
+    points, _ = rallies.detect_points(mdir)
+    assert [p.server_guess for p in points] == [s for _, _, s in RALLIES]

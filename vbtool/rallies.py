@@ -79,6 +79,25 @@ def snap_to_whistle(end_s: float, whistles: list[tuple[float, float]],
     return end_s, False
 
 
+def normalize_sides(near: np.ndarray, far: np.ndarray, spans: list[tuple[float, float]],
+                    rate: float) -> tuple[np.ndarray, np.ndarray]:
+    """Put near and far motion on the same scale.
+
+    Near-side players are closer to the camera, so they look bigger and
+    produce more pixel change than far-side players doing the same thing.
+    Without this, the near side "wins" every comparison. We divide each side
+    by its own typical motion during rallies.
+    """
+    mask = np.zeros(len(near), dtype=bool)
+    for a, b in spans:
+        mask[int(a * rate):int(b * rate)] = True
+    if not mask.any():
+        mask[:] = True
+    n_scale = float(np.median(near[mask])) or 1.0
+    f_scale = float(np.median(far[mask])) or 1.0
+    return near / n_scale, far / f_scale
+
+
 def guess_server(near: np.ndarray, far: np.ndarray, start_s: float, rate: float,
                  p: RallyParams) -> tuple[str, float]:
     i0 = int(start_s * rate)
@@ -102,12 +121,13 @@ def detect_points(mdir: Path, p: RallyParams | None = None,
     wav = mdir / "audio.wav"
     whistles = audio.detect_whistles(wav, whistle_params) if wav.exists() else []
     spans = find_active_spans(sig["total"], rate, p)
+    near_n, far_n = normalize_sides(sig["near"], sig["far"], spans, rate)
 
     points: list[Point] = []
     for i, (a, b) in enumerate(spans):
         nxt = spans[i + 1][0] if i + 1 < len(spans) else None
         end, by_whistle = snap_to_whistle(b, whistles, nxt, p)
-        server, sconf = guess_server(sig["near"], sig["far"], a, rate, p)
+        server, sconf = guess_server(near_n, far_n, a, rate, p)
         points.append(Point(
             index=i + 1, start_s=round(a, 2), end_s=round(end, 2),
             clip_start_s=round(max(0.0, a - p.clip_pad_before_s), 2),

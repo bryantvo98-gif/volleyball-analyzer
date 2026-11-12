@@ -24,12 +24,30 @@ Only the team closest to the camera is tracked.
 
 ## Setup on a Mac
 
+One time only. Run each line on its own in Terminal.
+
 ```bash
-brew install ffmpeg python
-git clone <this repo> && cd volleyball-analyzer
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+/opt/homebrew/bin/brew shellenv zsh > ~/.zprofile
+source ~/.zprofile
+brew install python ffmpeg gh
+gh auth login
+gh repo clone bryantvo98-gif/volleyball-analyzer ~/volleyball-analyzer
+cd ~/volleyball-analyzer
+/opt/homebrew/bin/python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -e .
 ```
+
+Each time you open a new Terminal window:
+
+```bash
+cd ~/volleyball-analyzer
+source .venv/bin/activate
+```
+
+To get the latest code: `git pull`, then `pip install -e .`
 
 ## Usage
 

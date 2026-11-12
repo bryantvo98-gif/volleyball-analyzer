@@ -74,16 +74,21 @@ clip times.
 
 How it decides (default whistle mode):
 
-- **Whistles**: a loud tone between about 2 and 4.5 kHz. A clear whistle lasts
-  at least 0.4 seconds. Cheering can drown out part of a whistle, so shorter
-  whistle-like sounds (0.15 to 0.4 seconds) are kept too, but trusted less:
-  they can only end a point, and only once 6 seconds have passed since the
-  serve whistle, so a squeak just after the serve doesn't end it. Whistles
-  less than 2 seconds apart count as one.
-- **Points**: whistles alternate between "serve" and "point over". A point
-  runs from a serve whistle to the next whistle. If that would be longer than
-  40 seconds (a missed whistle or a timeout), the tool starts pairing again
-  from the later whistle.
+- **Whistles**: first, unmistakable whistles (most of the sound's energy in
+  the 2 to 4.5 kHz band). From those it learns the referee's whistle pitch
+  (about 3.2 kHz in the first match), then also picks up quieter sounds with a
+  sharp peak at that same pitch. That catches whistles blown while the crowd is
+  cheering, since crowd noise sits lower, around 1 to 1.5 kHz.
+- **Points**: each whistle is labelled serve, end of point or "something else",
+  choosing the most plausible labelling for the whole match at once, so one
+  missed whistle can't shift every point after it. What counts as plausible:
+  - a point (serve whistle to end whistle) usually lasts 4 to 30 seconds
+  - the next serve whistle comes 7 to 25 seconds after an end whistle
+  - serve whistles are usually long blasts, end whistles are often short
+  - ignoring a long, clear whistle is unlikely; ignoring a short blip is fine
+  - a whistle before or after a long silence is likely a timeout or set break
+  - if an end whistle is never heard, the point is still kept, ending 6
+    seconds before the next serve whistle, and is marked "no whistle heard"
 - **Clips**: from 2 seconds before the serve whistle to 2 seconds after the
   end whistle, so the serve and the finish are always included.
 - Who served and who won are not guessed yet. That needs ball tracking.

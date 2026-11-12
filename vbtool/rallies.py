@@ -46,7 +46,10 @@ class RallyParams:
     # Whistle mode
     min_whistle_s: float = 0.4     # a clear whistle; shoe squeaks are shorter
     weak_whistle_s: float = 0.15   # shorter whistle-like sounds (whistles drowned by cheering)
-    weak_min_point_s: float = 6.0  # a short sound only ends a point this long after the serve whistle
+    min_between_s: float = 5.0     # end whistle to next serve whistle, at least
+    missed_end_before_s: float = 6.0  # if an end whistle is missed, end the point this long before the next serve
+    missed_whistle_cost: float = 4.0
+    break_gap_s: float = 25.0      # silence after a timeout / set-break whistle
     merge_whistle_s: float = 2.0   # whistles closer than this count as one
     min_point_s: float = 2.0
     max_point_s: float = 40.0
@@ -86,7 +89,7 @@ def find_active_spans(m: np.ndarray, rate: float, p: RallyParams) -> list[tuple[
 
 def snap_to_whistle(end_s: float, whistles: list[tuple[float, float]],
                     next_start_s: float | None, p: RallyParams) -> tuple[float, bool]:
-    for w0, _ in whistles:
+    for w0, *_ in whistles:
         if end_s - 0.5 <= w0 <= end_s + p.whistle_after_s and (next_start_s is None or w0 < next_start_s):
             return max(end_s, w0), True
     return end_s, False
@@ -123,54 +126,160 @@ def guess_server(near: np.ndarray, far: np.ndarray, start_s: float, rate: float,
     return side, round(conf, 3)
 
 
-def clean_whistles(whistles: list[tuple[float, float]], p: RallyParams) -> list[tuple[float, float]]:
-    """Drop tiny blips and merge whistle sounds close together.
+Whistle = tuple  # (start_s, end_s, clear_s)
 
-    Keeps both clear whistles and shorter whistle-like sounds; pair_whistles
-    decides how much to trust each one.
-    """
+
+def clean_whistles(whistles: list, p: RallyParams) -> list[Whistle]:
+    """Drop tiny blips and merge whistle sounds that start close together."""
     out: list[list[float]] = []
-    for a, b in whistles:
+    for w in whistles:
+        a, b = w[0], w[1]
+        clear = w[2] if len(w) > 2 else (b - a)
         if b - a < p.weak_whistle_s:
             continue
         if out and a - out[-1][0] < p.merge_whistle_s:
             out[-1][1] = max(out[-1][1], b)
+            out[-1][2] += clear
         else:
-            out.append([a, b])
-    return [(a, b) for a, b in out]
+            out.append([a, b, clear])
+    return [tuple(x) for x in out]
 
 
-def detect_from_raw(raw: list[tuple[float, float]], p: RallyParams) -> list[tuple[float, float]]:
-    return pair_whistles(clean_whistles(raw, p), p)
+def _skip_cost(w: Whistle, p: RallyParams) -> float:
+    """How costly it is to call this sound "not a referee whistle"."""
+    a, b, clear = w
+    return 0.3 + 3.0 * min(1.0, clear / p.min_whistle_s) + 1.0 * min(1.0, (b - a) / 0.6)
 
 
-def pair_whistles(whistles: list[tuple[float, float]], p: RallyParams) -> list[tuple[float, float]]:
-    """Pair alternating serve and end whistles into (serve_s, end_s) points.
+def _serve_cost(w: Whistle) -> float:
+    """Serve whistles are usually long, steady blasts (about 1 s)."""
+    d = w[1] - w[0]
+    if d < 0.4:
+        return 2.0
+    return 0.7 * max(0.0, (1.0 - d) / 0.6)
 
-    Clear whistles (at least `min_whistle_s` long) can start or end a point.
-    Short whistle-like sounds (`weak_whistle_s` to `min_whistle_s`) usually
-    mean a whistle partly drowned out by cheering, which happens most at the
-    end of a point. They can only end a point, and only once at least
-    `weak_min_point_s` has passed since the serve whistle, so a squeak right
-    after the serve whistle can't end it.
+
+def _point_cost(d: float, p: RallyParams) -> float | None:
+    """Cost of a serve whistle followed by an end whistle d seconds later."""
+    if d < p.min_point_s:
+        return None
+    if d > p.max_point_s:
+        return None
+    if d < 4.0:
+        return 1.0     # possible (service error) but unusual
+    if d > 30.0:
+        return 1.5
+    return 0.0
+
+
+def _between_cost(g: float, p: RallyParams) -> float | None:
+    """Cost of an end whistle followed by the next serve whistle g seconds later."""
+    if g < p.min_between_s:
+        return None
+    if g < 7.0:
+        return 1.5
+    if g > 25.0:
+        return 0.5     # timeouts and set breaks
+    return 0.0
+
+
+def decode_whistles(ws: list[Whistle], p: RallyParams) -> list[tuple[float, float, bool]]:
+    """Label each whistle as serve, end or noise, picking the most plausible match.
+
+    Rather than pairing whistles one by one (where one missed whistle shifts
+    every point after it), this scores whole sequences and keeps the best:
+    - skipping a clear, long whistle is expensive; skipping a short blip is cheap
+    - a point (serve to end whistle) usually lasts 4 to 30 s
+    - the gap from an end whistle to the next serve whistle is usually 7 to 25 s
+    - if an end whistle is missed entirely, the point is still kept, with its
+      end estimated as `missed_end_before_s` before the next serve whistle
+
+    Returns (serve_s, end_s, end_estimated) per point.
     """
-    points: list[tuple[float, float]] = []
-    serve: float | None = None
-    for a, b in whistles:
-        strong = (b - a) >= p.min_whistle_s - 1e-6
-        if serve is None:
-            if strong:
-                serve = a
+    n = len(ws)
+    if n == 0:
+        return []
+    t = [w[0] for w in ws]
+    skip = [_skip_cost(w, p) for w in ws]
+    # A whistle followed by a long silence is usually a timeout or set-break
+    # whistle rather than a serve or end whistle, so ignoring it is cheap.
+    # The same goes for the whistle that ends a break and calls teams back.
+    for k in range(n - 1):
+        if t[k + 1] - t[k] >= p.break_gap_s:
+            skip[k] = min(skip[k], 0.5)
+            skip[k + 1] = min(skip[k + 1], 0.5)
+    # Serve whistles are usually long, steady blasts; end whistles are often
+    # short or drowned out by cheering. A short sound is a less likely serve.
+    serve_cost = [_serve_cost(w) for w in ws]
+    pre = [0.0]
+    for c in skip:
+        pre.append(pre[-1] + c)
+
+    def skipped(i: int, j: int) -> float:   # cost of skipping everything strictly between i and j
+        return pre[j] - pre[i + 1]
+
+    INF = float("inf")
+    S = [INF] * n   # best cost with whistle j as a serve whistle
+    E = [INF] * n   # best cost with whistle j as an end whistle
+    S_from: list = [None] * n
+    E_from: list = [None] * n
+    for j in range(n):
+        # j is the first whistle we use: everything before it is noise
+        S[j], S_from[j] = pre[j] + serve_cost[j], ("start", None)
+        for i in range(j):
+            between = skipped(i, j)
+            if E[i] < INF:
+                c = _between_cost(t[j] - t[i], p)
+                if c is not None:
+                    cost = E[i] + between + c + serve_cost[j]
+                    if cost < S[j]:
+                        S[j], S_from[j] = cost, ("E", i)
+            if S[i] < INF:
+                c = _point_cost(t[j] - t[i], p)
+                if c is not None:
+                    cost = S[i] + between + c
+                    if cost < E[j]:
+                        E[j], E_from[j] = cost, ("S", i)
+                # serve whistle i whose end whistle was never heard
+                if t[j] - t[i] >= p.missed_end_before_s + p.min_point_s:
+                    cost = S[i] + between + p.missed_whistle_cost + serve_cost[j]
+                    if cost < S[j]:
+                        S[j], S_from[j] = cost, ("S", i)
+    # finish: last used whistle is an end whistle, or a serve whose end is cut off
+    best, last, kind = INF, None, None
+    for j in range(n):
+        tail = pre[n] - pre[j + 1]
+        if E[j] + tail < best:
+            best, last, kind = E[j] + tail, j, "E"
+        if S[j] + tail + p.missed_whistle_cost < best:
+            best, last, kind = S[j] + tail + p.missed_whistle_cost, j, "S"
+    labels: list[tuple[str, int]] = []
+    while last is not None:
+        labels.append((kind, last))
+        prev = (S_from if kind == "S" else E_from)[last]
+        if prev[0] == "start":
+            break
+        kind, last = prev
+    labels.reverse()
+    points = []
+    for k, (kind, j) in enumerate(labels):
+        if kind != "S":
             continue
-        gap = a - serve
-        if gap < (p.min_point_s if strong else p.weak_min_point_s):
-            continue
-        if gap > p.max_point_s:
-            serve = a if strong else None   # lost track (missed whistle, timeout): restart
-            continue
-        points.append((serve, a))
-        serve = None
+        nxt = labels[k + 1] if k + 1 < len(labels) else None
+        if nxt and nxt[0] == "E":
+            points.append((t[j], t[nxt[1]], False))
+        elif nxt and nxt[0] == "S":
+            points.append((t[j], t[nxt[1]] - p.missed_end_before_s, True))
     return points
+
+
+def pair_whistles(whistles: list, p: RallyParams) -> list[tuple[float, float]]:
+    """(serve_s, end_s) for each point; see decode_whistles."""
+    return [(a, b) for a, b, _ in decode_whistles(clean_whistles(whistles, p), p)]
+
+
+def detect_from_raw(raw: list, p: RallyParams) -> list[tuple[float, float]]:
+    return pair_whistles(raw, p)
 
 
 def detect_points_from_whistles(mdir: Path, p: RallyParams,
@@ -179,17 +288,16 @@ def detect_points_from_whistles(mdir: Path, p: RallyParams,
     duration = float(meta["duration_s"])
     raw = audio.detect_whistles(mdir / "audio.wav", whistle_params)
     kept = clean_whistles(raw, p)
-    points = [
-        Point(
+    points = []
+    for i, (a, b, estimated) in enumerate(decode_whistles(kept, p)):
+        points.append(Point(
             index=i + 1, start_s=round(a, 2), end_s=round(b, 2),
             clip_start_s=round(max(0.0, a - p.clip_pad_before_s), 2),
             clip_end_s=round(min(duration, b + p.clip_pad_after_s), 2),
-            ended_by_whistle=True,
+            ended_by_whistle=not estimated,
             server_guess="unknown", server_confidence=0.0,
             winner_guess="unknown", winner_confidence=0.0,
-        )
-        for i, (a, b) in enumerate(pair_whistles(kept, p))
-    ]
+        ))
     debug = {"mode": "whistle", "whistles": raw, "whistles_kept": kept}
     return points, debug
 
@@ -279,7 +387,8 @@ def run(match_id: str, root: Path = DATA_DIR, clips: bool = True,
         print(f"Found {len(points)} points from {len(debug['whistles_kept'])} whistles "
               f"({len(debug['whistles']) - len(debug['whistles_kept'])} short sounds ignored).")
         for pt in points:
-            print(f"  #{pt.index:>3}  serve whistle {fmt(pt.start_s)}  end whistle {fmt(pt.end_s)}  "
+            end = f"end whistle {fmt(pt.end_s)}" if pt.ended_by_whistle else f"end ~{fmt(pt.end_s)} (no whistle heard)"
+            print(f"  #{pt.index:>3}  serve whistle {fmt(pt.start_s)}  {end}  "
                   f"clip {fmt(pt.clip_start_s)}-{fmt(pt.clip_end_s)}")
     else:
         print(f"Found {len(points)} points and {len(debug['whistles'])} whistles.")

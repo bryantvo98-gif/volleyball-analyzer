@@ -228,7 +228,11 @@ def cut_clips(mdir: Path, points: list[Point]) -> None:
             ["ffmpeg", "-y", "-loglevel", "error",
              "-ss", f"{pt.clip_start_s:.2f}", "-to", f"{pt.clip_end_s:.2f}",
              "-i", str(video), "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-             "-c:a", "aac", "-movflags", "+faststart", str(out / name)],
+             # 8-bit 4:2:0 H.264 High profile plays natively in QuickTime and
+             # browsers; without this a 10-bit source gives clips Macs can't
+             # play smoothly.
+             "-pix_fmt", "yuv420p", "-profile:v", "high", "-tag:v", "avc1",
+             "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(out / name)],
             check=True,
         )
         pt.clip = f"clips/{name}"

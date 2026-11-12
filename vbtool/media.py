@@ -62,7 +62,9 @@ def download_youtube(url: str, dest: Path, max_height: int = 720) -> str:
     require_tool("ffmpeg")
     dest.mkdir(parents=True, exist_ok=True)
     opts = {
-        "format": f"bv*[height<={max_height}][ext=mp4]+ba[ext=m4a]/b[height<={max_height}]/b",
+        # Prefer H.264 (avc1): YouTube's AV1/VP9 streams play badly in QuickTime
+        "format": (f"bv*[vcodec^=avc1][height<={max_height}]+ba[ext=m4a]/"
+                   f"bv*[height<={max_height}][ext=mp4]+ba[ext=m4a]/b[height<={max_height}]/b"),
         "merge_output_format": "mp4",
         "outtmpl": str(dest / "video.%(ext)s"),
         "quiet": False,

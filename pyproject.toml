@@ -5,6 +5,8 @@ description = "Semi-automatic volleyball match analysis from fixed-camera video"
 requires-python = ">=3.10"
 dependencies = [
   "yt-dlp>=2024.1.0",
+  "numpy>=1.24",
+  "pillow>=10",
 ]
 
 [project.optional-dependencies]
@@ -19,3 +21,6 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = ["vbtool"]
+
+[tool.setuptools.package-data]
+vbtool = ["*.html"]

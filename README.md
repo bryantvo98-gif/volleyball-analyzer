@@ -66,10 +66,11 @@ vb rallies g5GqP4kEs_0
 ```
 
 This finds each point and writes `points.json`, one clip per point in
-`clips/`, and `all_points.mp4`: every clip back to back, with the point number
-and its start time in the original video shown in the top right corner. Use it
-to skim the whole match and spot wrong clips quickly. `vb stitch <id>` rebuilds
-just that video. It prints one line per point with the serve whistle, end whistle and
+`clips/` (labelled with the point number and its start time in the full match,
+like "Point 12 | 6:24"), and `all_points.mp4`: every point back to back,
+labelled with the point number and the score going into it, like
+"Point 12 | Bumps 9 - 8 Opponents". The score comes from the winners recorded
+in the review screen. `vb stitch <id>` rebuilds just the stitched video. It prints one line per point with the serve whistle, end whistle and
 clip times.
 
 How it decides (default whistle mode):
@@ -113,9 +114,13 @@ on the right and its clip plays in the full match video. For each point you can:
 - **Fix it**: "Not a point", "Merge with next", "Split here" (at the current
   video time), "Add a point here", or move the start or end by half a second or
   to the current video time.
-- **Record it**: who won (near = your team, far = the other team), what ended
-  it (ace, kill, service error, attack error, block and so on), whether a near
-  or far player did it, the near-side player's name, and notes.
+- **Record it**: who won (Bumps, the team nearest the camera, or Opponents),
+  what ended it (ace, kill, service error, attack error, block and so on),
+  which team's player did it, the Bumps player's name, and notes.
+- **Fine-tune times**: under the full-match bar there's a zoomed bar showing
+  just the selected point plus 10 seconds either side. Drag its green handle
+  (start) or red handle (end), click it to jump, step 0.2 seconds with the
+  buttons or the `,` and `.` keys, and use "Half speed" (`H`) for close calls.
 
 The running score shows at the top. Changes save automatically to
 `points.json`, and the tool's original guesses are kept in `points.auto.json`.

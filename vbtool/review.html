@@ -14,13 +14,23 @@
   .score .n { color:var(--near); } .score .f { color:var(--far); }
   .saved { margin-left:auto; color:var(--muted); font-size:12px; }
   main { display:grid; grid-template-columns: 1fr 360px; gap:12px; padding:12px; height:calc(100vh - 52px); }
-  .left { display:flex; flex-direction:column; gap:8px; min-width:0; }
-  video { width:100%; max-height:55vh; background:#000; border-radius:8px; }
+  .left { display:flex; flex-direction:column; gap:8px; min-width:0; overflow:auto; }
+  video { width:100%; max-height:48vh; background:#000; border-radius:8px; }
   .timeline { position:relative; height:28px; background:#e9e9e6; border-radius:6px; cursor:pointer; }
   .timeline .seg { position:absolute; top:4px; bottom:4px; border-radius:3px; background:#9aa4b5; }
   .timeline .seg.near { background:var(--near); } .timeline .seg.far { background:var(--far); }
   .timeline .seg.sel { outline:2px solid var(--ink); }
   .timeline .head { position:absolute; top:0; bottom:0; width:2px; background:var(--bad); }
+  .zoomwrap { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
+  .zoom { position:relative; height:46px; background:#f1f1ef; border-radius:6px; cursor:pointer; overflow:hidden; user-select:none; }
+  .zoom .tick { position:absolute; bottom:0; width:1px; height:8px; background:#b9b9b4; }
+  .zoom .tick.big { height:16px; background:#8d8d88; }
+  .zoom .tlabel { position:absolute; top:2px; font-size:10px; color:var(--muted); transform:translateX(-50%); pointer-events:none; }
+  .zoom .zseg { position:absolute; top:14px; bottom:10px; background:rgba(47,111,219,.18); border-radius:3px; pointer-events:none; }
+  .zoom .zhandle { position:absolute; top:6px; bottom:0; width:12px; margin-left:-6px; border-radius:4px; cursor:ew-resize; z-index:2; }
+  .zoom .zhandle.start { background:var(--ok); } .zoom .zhandle.end { background:var(--bad); }
+  .zoom .zhead { position:absolute; top:0; bottom:0; width:2px; background:var(--ink); pointer-events:none; z-index:3; }
+  button.on.plain { background:var(--ink); color:#fff; }
   .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; }
   .row { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:6px 0; }
   .row label { color:var(--muted); min-width:70px; }
@@ -51,13 +61,28 @@
 <header>
   <h1 id="title">Point review</h1>
   <div class="score"><span class="n" id="scoreN">0</span> – <span class="f" id="scoreF">0</span></div>
-  <div class="keys">Near (your team) – Far</div>
+  <div class="keys">Bumps – Opponents</div>
   <div class="saved" id="saved">Loading…</div>
 </header>
 <main>
   <div class="left">
     <video id="video" src="/video" controls preload="auto" playsinline></video>
-    <div class="timeline" id="timeline"><div class="head" id="head"></div></div>
+    <div class="timeline" id="timeline" title="Whole match"><div class="head" id="head"></div></div>
+    <div class="zoomwrap">
+      <div class="zoom" id="zoom" title="Zoomed in on the selected point. Drag the handles to change the start or end.">
+        <div class="zseg" id="zseg"></div>
+        <div class="zhandle start" id="hStart" title="Drag to move the start"></div>
+        <div class="zhandle end" id="hEnd" title="Drag to move the end"></div>
+        <div class="zhead" id="zhead"></div>
+      </div>
+      <div class="row" style="margin:4px 0 0">
+        <button id="back02" title=",">◀ 0.2s</button>
+        <span class="time" id="nowTime"></span>
+        <button id="fwd02" title=".">0.2s ▶</button>
+        <button id="speed" title="H">Half speed</button>
+        <span class="keys">Drag the green handle (start) or red handle (end). Click anywhere on this bar to jump there.</span>
+      </div>
+    </div>
     <div class="panel" id="detail">
       <div class="row">
         <strong id="dTitle">No point selected</strong>
@@ -73,19 +98,19 @@
       </div>
       <div class="row">
         <label>Won by</label>
-        <button class="near" id="winNear" title="1">Near (your team)</button>
-        <button class="far" id="winFar" title="2">Far</button>
+        <button class="near" id="winNear" title="1">Bumps</button>
+        <button class="far" id="winFar" title="2">Opponents</button>
       </div>
       <div class="row">
         <label>Ended by</label>
         <select id="action"></select>
         <span class="sub">done by</span>
-        <button class="near" id="byNear">Near player</button>
-        <button class="far" id="byFar">Far player</button>
+        <button class="near" id="byNear">Bumps player</button>
+        <button class="far" id="byFar">Opponents player</button>
       </div>
       <div class="row">
         <label>Player</label>
-        <input type="text" id="player" list="playerNames" placeholder="Near-side player (optional)">
+        <input type="text" id="player" list="playerNames" placeholder="Bumps player (optional)">
         <datalist id="playerNames"></datalist>
         <input type="text" id="notes" placeholder="Notes" style="flex:1">
       </div>
@@ -98,8 +123,8 @@
       </div>
       <div class="keys">
         <kbd>Space</kbd> play/pause · <kbd>←</kbd><kbd>→</kbd> 1s (<kbd>Shift</kbd> 5s) · <kbd>↑</kbd><kbd>↓</kbd> previous/next point ·
-        <kbd>[</kbd> <kbd>]</kbd> start/end = now · <kbd>1</kbd> near won · <kbd>2</kbd> far won ·
-        <kbd>X</kbd> not a point · <kbd>M</kbd> merge · <kbd>S</kbd> split · <kbd>A</kbd> add
+        <kbd>[</kbd> <kbd>]</kbd> start/end = now · <kbd>1</kbd> Bumps won · <kbd>2</kbd> Opponents won ·
+        <kbd>,</kbd><kbd>.</kbd> 0.2s · <kbd>H</kbd> half speed · <kbd>X</kbd> not a point · <kbd>M</kbd> merge · <kbd>S</kbd> split · <kbd>A</kbd> add
       </div>
     </div>
   </div>
@@ -183,7 +208,7 @@ function render() {
     if (complete(p)) done++;
     const el = document.createElement("div");
     el.className = "item" + (i === sel ? " sel" : "");
-    const badge = w ? `<span class="badge ${w}">${w === "near" ? "Near" : "Far"} ${n}-${f}</span>` : `<span class="badge todo">to review</span>`;
+    const badge = w ? `<span class="badge ${w}">${w === "near" ? "Bumps" : "Opponents"} ${n}-${f}</span>` : `<span class="badge todo">to review</span>`;
     el.innerHTML = `<div class="num">${p.index}</div>
       <div><div>${fmt(p.start_s)} – ${fmt(p.end_s)} <span class="sub">(${(p.end_s - p.start_s).toFixed(0)}s)</span></div>
       <div class="sub">${p.end_action ? actionLabel(p.end_action) : ""}${p.player ? " · " + p.player : ""}${!p.ended_by_whistle && !p.reviewed && p.clip !== null ? " · no end whistle heard" : ""}</div></div>${badge}`;
@@ -204,7 +229,66 @@ function render() {
     tl.appendChild(s);
   });
   renderDetail();
+  renderZoom();
 }
+
+const ZOOM_PAD = 10;
+function zoomRange() {
+  const p = points[sel]; if (!p) return null;
+  return [Math.max(0, p.start_s - ZOOM_PAD), Math.min(v.duration || 1e9, p.end_s + ZOOM_PAD)];
+}
+function zx(t) { const r = zoomRange(); return 100 * (t - r[0]) / (r[1] - r[0]); }
+function renderZoom() {
+  const z = $("zoom"), r = zoomRange();
+  z.querySelectorAll(".tick,.tlabel").forEach(e => e.remove());
+  const show = !!r; ["zseg", "hStart", "hEnd"].forEach(id => $(id).style.display = show ? "" : "none");
+  if (!r) return;
+  for (let t = Math.ceil(r[0]); t <= r[1]; t++) {
+    const big = t % 5 === 0, tk = document.createElement("div");
+    tk.className = "tick" + (big ? " big" : ""); tk.style.left = zx(t) + "%"; z.appendChild(tk);
+    if (big) { const l = document.createElement("div"); l.className = "tlabel"; l.style.left = zx(t) + "%";
+      l.textContent = fmt(t).replace(/\.0$/, ""); z.appendChild(l); }
+  }
+  const p = points[sel];
+  $("zseg").style.left = zx(p.start_s) + "%"; $("zseg").style.width = (zx(p.end_s) - zx(p.start_s)) + "%";
+  $("hStart").style.left = zx(p.start_s) + "%"; $("hEnd").style.left = zx(p.end_s) + "%";
+  updateHeads();
+}
+function updateHeads() {
+  const dur = v.duration || 1; $("head").style.left = (100 * v.currentTime / dur) + "%";
+  $("nowTime").textContent = fmt(v.currentTime);
+  const r = zoomRange();
+  if (r) { const x = zx(v.currentTime); $("zhead").style.display = (x >= 0 && x <= 100) ? "" : "none"; $("zhead").style.left = x + "%"; }
+}
+function zoomTime(clientX) {
+  const b = $("zoom").getBoundingClientRect(), r = zoomRange();
+  return r[0] + Math.min(1, Math.max(0, (clientX - b.left) / b.width)) * (r[1] - r[0]);
+}
+let drag = null;
+["hStart", "hEnd"].forEach(id => $(id).addEventListener("pointerdown", e => {
+  if (sel < 0) return; e.preventDefault(); e.stopPropagation();
+  drag = { which: id === "hStart" ? "start" : "end", range: zoomRange() }; snapshot(); v.pause();
+  $(id).setPointerCapture(e.pointerId);
+}));
+document.addEventListener("pointermove", e => {
+  if (!drag) return; const p = points[sel];
+  const b = $("zoom").getBoundingClientRect(), r = drag.range;
+  let t = r[0] + Math.min(1, Math.max(0, (e.clientX - b.left) / b.width)) * (r[1] - r[0]);
+  t = Math.round(t * 10) / 10;
+  if (drag.which === "start") p.start_s = Math.min(t, p.end_s - 0.5); else { p.end_s = Math.max(t, p.start_s + 0.5); p.ended_by_whistle = true; }
+  v.currentTime = drag.which === "start" ? p.start_s : p.end_s;
+  // keep the zoom window fixed while dragging
+  $("zseg").style.left = (100 * (p.start_s - r[0]) / (r[1] - r[0])) + "%";
+  $("zseg").style.width = (100 * (p.end_s - p.start_s) / (r[1] - r[0])) + "%";
+  $(drag.which === "start" ? "hStart" : "hEnd").style.left = (100 * ((drag.which === "start" ? p.start_s : p.end_s) - r[0]) / (r[1] - r[0])) + "%";
+  $("dStart").textContent = fmt(p.start_s); $("dEnd").textContent = fmt(p.end_s);
+});
+document.addEventListener("pointerup", () => { if (!drag) return; const p = points[sel]; drag = null; fixClip(p); changed(); });
+$("zoom").addEventListener("click", e => { if (sel < 0 || e.target.classList.contains("zhandle")) return; v.currentTime = zoomTime(e.clientX); });
+function step(d) { v.pause(); v.currentTime = Math.max(0, v.currentTime + d); }
+$("back02").onclick = () => step(-0.2); $("fwd02").onclick = () => step(0.2);
+$("speed").onclick = () => { v.playbackRate = v.playbackRate === 1 ? 0.5 : 1; $("speed").classList.toggle("on", v.playbackRate !== 1);
+  $("speed").classList.toggle("plain", v.playbackRate !== 1); };
 
 function renderDetail() {
   const p = points[sel];
@@ -237,7 +321,7 @@ function select(i, play) {
 
 // playback: stop or advance at the end of the selected clip
 v.addEventListener("timeupdate", () => {
-  const dur = v.duration || 1; $("head").style.left = (100 * v.currentTime / dur) + "%";
+  updateHeads();
   const p = points[sel];
   if (p && !v.paused && v.currentTime >= p.clip_end_s && v.currentTime < p.clip_end_s + 1) {
     if ($("autoNext").checked && sel < points.length - 1) select(sel + 1, true); else v.pause();
@@ -277,13 +361,14 @@ $("add").onclick = () => { snapshot(); const t = v.currentTime; const q = newPoi
 
 document.addEventListener("keydown", e => {
   if (["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) return;
-  const k = e.key, step = e.shiftKey ? 5 : 1;
+  const k = e.key, jump = e.shiftKey ? 5 : 1;
   const map = {
     " ": () => (v.paused ? v.play() : v.pause()),
-    "ArrowLeft": () => v.currentTime -= step, "ArrowRight": () => v.currentTime += step,
+    "ArrowLeft": () => v.currentTime -= jump, "ArrowRight": () => v.currentTime += jump,
     "ArrowUp": () => select(sel - 1, true), "ArrowDown": () => select(sel + 1, true),
     "[": () => $("setStart").click(), "]": () => $("setEnd").click(),
     "1": () => $("winNear").click(), "2": () => $("winFar").click(),
+    ",": () => step(-0.2), ".": () => step(0.2), "h": () => $("speed").click(),
     "x": () => $("del").click(), "m": () => $("merge").click(), "s": () => $("split").click(), "a": () => $("add").click(),
   };
   const fn = map[k] || map[k.toLowerCase()];

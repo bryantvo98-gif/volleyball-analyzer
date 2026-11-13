@@ -29,7 +29,7 @@ from pathlib import Path
 import numpy as np
 
 from . import audio, motion, stitch
-from .media import DATA_DIR, match_dir, require_tool
+from .media import DATA_DIR, match_dir, probe, require_tool
 
 
 @dataclass
@@ -347,24 +347,19 @@ def detect_points(mdir: Path, p: RallyParams | None = None,
 
 
 def cut_clips(mdir: Path, points: list[Point]) -> None:
+    """One clip per point, labelled with its point number and start time."""
+    import tempfile
     require_tool("ffmpeg")
     out = mdir / "clips"
     out.mkdir(exist_ok=True)
     video = mdir / "video.mp4"
-    for pt in points:
-        name = f"point_{pt.index:03d}.mp4"
-        subprocess.run(
-            ["ffmpeg", "-y", "-loglevel", "error",
-             "-ss", f"{pt.clip_start_s:.2f}", "-to", f"{pt.clip_end_s:.2f}",
-             "-i", str(video), "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-             # 8-bit 4:2:0 H.264 High profile plays natively in QuickTime and
-             # browsers; without this a 10-bit source gives clips Macs can't
-             # play smoothly.
-             "-pix_fmt", "yuv420p", "-profile:v", "high", "-tag:v", "avc1",
-             "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(out / name)],
-            check=True,
-        )
-        pt.clip = f"clips/{name}"
+    height = probe(video)["height"]
+    with tempfile.TemporaryDirectory() as tmp:
+        for pt in points:
+            name = f"point_{pt.index:03d}.mp4"
+            stitch.cut_labelled(video, pt.clip_start_s, pt.clip_end_s,
+                                stitch.clip_label(asdict(pt)), height, out / name, Path(tmp))
+            pt.clip = f"clips/{name}"
 
 
 def recut(match_id: str, root: Path = DATA_DIR) -> None:

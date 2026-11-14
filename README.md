@@ -69,8 +69,9 @@ This finds each point and writes `points.json`, one clip per point in
 `clips/` (labelled with the point number and its start time in the full match,
 like "Point 12 | 6:24"), and `all_points.mp4`: every point back to back,
 labelled with the point number and the score going into it, like
-"Point 12 | Bumps 9 - 8 Opponents". The score comes from the winners recorded
-in the review screen. `vb stitch <id>` rebuilds just the stitched video. It prints one line per point with the serve whistle, end whistle and
+"Point 12 | Bumps 9 – 8 Opponents". The score comes from the winners recorded
+in the review screen. `vb stitch <id>` rebuilds just the stitched video. Labels sit in a
+frosted-glass capsule in the top right corner. It prints one line per point with the serve whistle, end whistle and
 clip times.
 
 How it decides (default whistle mode):
@@ -122,10 +123,11 @@ on the right and its clip plays in the full match video. For each point you can:
   (start) or red handle (end), click it to jump, step 0.2 seconds with the
   buttons or the `,` and `.` keys, and use "Half speed" (`H`) for close calls.
 
-The running score shows at the top. Changes save automatically to
+The running score shows at the top. The screen follows your Mac's light or
+dark appearance. Changes save automatically to
 `points.json`, and the tool's original guesses are kept in `points.auto.json`.
 Press Control+C in Terminal when you're done. Keyboard shortcuts are listed
-under the video.
+under "Keyboard shortcuts" at the bottom of the point's details.
 
 After fixing points, recut the clips and the stitched video:
 

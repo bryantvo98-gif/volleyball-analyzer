@@ -353,12 +353,13 @@ def cut_clips(mdir: Path, points: list[Point]) -> None:
     out = mdir / "clips"
     out.mkdir(exist_ok=True)
     video = mdir / "video.mp4"
-    height = probe(video)["height"]
+    info = probe(video)
+    size = (info["width"], info["height"])
     with tempfile.TemporaryDirectory() as tmp:
         for pt in points:
             name = f"point_{pt.index:03d}.mp4"
             stitch.cut_labelled(video, pt.clip_start_s, pt.clip_end_s,
-                                stitch.clip_label(asdict(pt)), height, out / name, Path(tmp))
+                                stitch.clip_parts(asdict(pt)), size, out / name, Path(tmp))
             pt.clip = f"clips/{name}"
 
 

@@ -2,135 +2,305 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>Point review</title>
 <style>
-  :root { --bg:#f6f6f4; --panel:#fff; --ink:#1d1d1f; --muted:#6b6b70; --line:#e2e2e0;
-          --near:#2f6fdb; --far:#d4682a; --ok:#2e8b57; --warn:#b8860b; --bad:#c0392b; }
+  :root {
+    color-scheme: light dark;
+    --bg:#f5f5f7; --card:#fff; --ink:#1d1d1f; --ink2:#6e6e73; --ink3:#86868b;
+    --hair:rgba(0,0,0,.1); --fill:rgba(118,118,128,.12); --fill-hover:rgba(118,118,128,.2);
+    --glass:rgba(250,250,252,.72); --glass-edge:rgba(255,255,255,.6);
+    --near:#0071e3; --far:#e8710a; --ok:#28a745; --warn:#b25000; --bad:#d70015;
+    --near-soft:rgba(0,113,227,.12); --far-soft:rgba(232,113,10,.14); --warn-soft:rgba(255,159,10,.16);
+    --sel:rgba(0,113,227,.1); --raised:#fff;
+    --shadow:0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.05);
+    --header-h:3.5rem; --r:0.875rem;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#000; --card:#1c1c1e; --ink:#f5f5f7; --ink2:#a1a1a6; --ink3:#8e8e93;
+      --hair:rgba(255,255,255,.12); --fill:rgba(118,118,128,.24); --fill-hover:rgba(118,118,128,.36);
+      --glass:rgba(28,28,30,.72); --glass-edge:rgba(255,255,255,.1);
+      --near:#0a84ff; --far:#ff9f0a; --ok:#30d158; --warn:#ffd60a; --bad:#ff453a;
+      --near-soft:rgba(10,132,255,.2); --far-soft:rgba(255,159,10,.2); --warn-soft:rgba(255,214,10,.14);
+      --sel:rgba(10,132,255,.18); --raised:#636366;
+      --shadow:0 0 0 1px rgba(255,255,255,.06);
+    }
+  }
   * { box-sizing:border-box; }
-  body { margin:0; font:14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:var(--ink); background:var(--bg); }
-  header { display:flex; align-items:center; gap:16px; padding:10px 16px; background:var(--panel); border-bottom:1px solid var(--line); }
-  header h1 { font-size:16px; margin:0; font-weight:600; }
-  .score { font-size:20px; font-weight:700; letter-spacing:.5px; }
-  .score .n { color:var(--near); } .score .f { color:var(--far); }
-  .saved { margin-left:auto; color:var(--muted); font-size:12px; }
-  main { display:grid; grid-template-columns: 1fr 360px; gap:12px; padding:12px; height:calc(100vh - 52px); }
-  .left { display:flex; flex-direction:column; gap:8px; min-width:0; overflow:auto; }
-  video { width:100%; max-height:48vh; background:#000; border-radius:8px; }
-  .timeline { position:relative; height:28px; background:#e9e9e6; border-radius:6px; cursor:pointer; }
-  .timeline .seg { position:absolute; top:4px; bottom:4px; border-radius:3px; background:#9aa4b5; }
+  html { font-size:100%; }
+  body { margin:0; font:0.875rem/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         color:var(--ink); background:var(--bg); -webkit-font-smoothing:antialiased; }
+  .tnum { font-variant-numeric:tabular-nums; }
+
+  /* Header: a translucent layer that content scrolls under */
+  header { position:fixed; inset:0 0 auto 0; height:var(--header-h); z-index:10;
+           display:grid; grid-template-columns:1fr auto 1fr; align-items:center; padding:0 1.25rem;
+           background:var(--glass); -webkit-backdrop-filter:blur(20px) saturate(180%); backdrop-filter:blur(20px) saturate(180%);
+           box-shadow:inset 0 1px 0 var(--glass-edge), 0 1px 0 var(--hair); }
+  .brand { display:flex; align-items:baseline; gap:0.75rem; min-width:0; }
+  .brand h1 { font-size:1.0625rem; font-weight:600; letter-spacing:-0.015em; margin:0; white-space:nowrap; }
+  .brand .progress { color:var(--ink2); font-size:0.8125rem; white-space:nowrap; }
+  .scoreboard { display:flex; align-items:center; gap:0.875rem; }
+  .team { display:flex; align-items:center; gap:0.4rem; font-size:0.8125rem; font-weight:500; color:var(--ink2); }
+  .team::before { content:""; width:0.5rem; height:0.5rem; border-radius:50%; background:var(--near); }
+  .team.far { flex-direction:row-reverse; } .team.far::before { background:var(--far); }
+  .score { font-size:1.5rem; font-weight:700; letter-spacing:-0.02em; line-height:1; font-variant-numeric:tabular-nums; }
+  .score .dash { color:var(--ink3); font-weight:400; margin:0 0.3rem; }
+  .saved { justify-self:end; display:flex; align-items:center; gap:0.4rem; color:var(--ink2); font-size:0.8125rem; }
+  .saved::before { content:""; width:0.4rem; height:0.4rem; border-radius:50%; background:var(--ok); transition:background 200ms ease; }
+  .saved.busy::before { background:var(--ink3); } .saved.error { color:var(--bad); } .saved.error::before { background:var(--bad); }
+
+  main { display:grid; grid-template-columns:minmax(0,1fr) 21rem; height:100vh; }
+  .left { display:flex; flex-direction:column; gap:0.75rem; min-width:0; overflow:auto;
+          padding:calc(var(--header-h) + 1rem) 1rem 1.5rem 1.25rem; }
+  .left > * { flex:none; }
+  .card { background:var(--card); border-radius:var(--r); box-shadow:var(--shadow); }
+
+  .stage { background:#000; border-radius:var(--r); overflow:hidden; box-shadow:0 8px 30px rgba(0,0,0,.16); }
+  video { display:block; width:100%; max-height:46vh; background:#000; }
+
+  /* Whole-match strip */
+  .timeline { position:relative; height:1.5rem; background:var(--fill); border-radius:0.5rem; cursor:pointer; }
+  .timeline .seg { position:absolute; top:0.3rem; bottom:0.3rem; border-radius:0.2rem; background:var(--ink3); opacity:.7;
+                   transition:opacity 150ms ease; }
+  .timeline .seg:hover { opacity:1; }
   .timeline .seg.near { background:var(--near); } .timeline .seg.far { background:var(--far); }
-  .timeline .seg.sel { outline:2px solid var(--ink); }
-  .timeline .head { position:absolute; top:0; bottom:0; width:2px; background:var(--bad); }
-  .zoomwrap { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
-  .zoom { position:relative; height:46px; background:#f1f1ef; border-radius:6px; cursor:pointer; overflow:hidden; user-select:none; }
-  .zoom .tick { position:absolute; bottom:0; width:1px; height:8px; background:#b9b9b4; }
-  .zoom .tick.big { height:16px; background:#8d8d88; }
-  .zoom .tlabel { position:absolute; top:2px; font-size:10px; color:var(--muted); transform:translateX(-50%); pointer-events:none; }
-  .zoom .zseg { position:absolute; top:14px; bottom:10px; background:rgba(47,111,219,.18); border-radius:3px; pointer-events:none; }
-  .zoom .zhandle { position:absolute; top:6px; bottom:0; width:12px; margin-left:-6px; border-radius:4px; cursor:ew-resize; z-index:2; }
+  .timeline .seg.sel { opacity:1; top:0.1rem; bottom:0.1rem; box-shadow:0 0 0 2px var(--card), 0 0 0 3.5px var(--ink); z-index:1; }
+  .timeline .head { position:absolute; top:-0.15rem; bottom:-0.15rem; width:2px; margin-left:-1px; border-radius:1px; background:var(--ink); pointer-events:none; z-index:2; }
+
+  /* Fine-tune strip */
+  .zoomwrap { padding:0.75rem 0.875rem 0.625rem; }
+  .zoom { position:relative; height:3.25rem; background:var(--fill); border-radius:0.5rem; cursor:pointer; user-select:none; touch-action:none; }
+  .zoom .tick { position:absolute; bottom:0; width:1px; height:0.4rem; background:var(--ink3); opacity:.45; }
+  .zoom .tick.big { height:0.75rem; opacity:.8; }
+  .zoom .tlabel { position:absolute; top:0.2rem; font-size:0.6875rem; letter-spacing:0.01em; color:var(--ink2);
+                  transform:translateX(-50%); pointer-events:none; font-variant-numeric:tabular-nums; }
+  .zoom .zseg { position:absolute; top:1.15rem; bottom:0.9rem; background:var(--near-soft); pointer-events:none;
+                border-top:1.5px solid var(--near); border-bottom:1.5px solid var(--near); }
+  .zoom .zhandle { position:absolute; top:0.7rem; bottom:0.45rem; width:0.75rem; margin-left:-0.375rem; border-radius:0.3rem;
+                   cursor:ew-resize; z-index:2; box-shadow:0 1px 3px rgba(0,0,0,.3); transition:transform 120ms ease-out; }
+  .zoom .zhandle::before { content:""; position:absolute; inset:-0.6rem; }          /* bigger grab area */
+  .zoom .zhandle::after { content:""; position:absolute; left:50%; top:30%; bottom:30%; width:2px; margin-left:-1px;
+                          border-radius:1px; background:rgba(255,255,255,.85); }
+  .zoom .zhandle:hover, .zoom .zhandle.drag { transform:scaleX(1.25) scaleY(1.08); }
   .zoom .zhandle.start { background:var(--ok); } .zoom .zhandle.end { background:var(--bad); }
-  .zoom .zhead { position:absolute; top:0; bottom:0; width:2px; background:var(--ink); pointer-events:none; z-index:3; }
-  button.on.plain { background:var(--ink); color:#fff; }
-  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; }
-  .row { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:6px 0; }
-  .row label { color:var(--muted); min-width:70px; }
-  button { font:inherit; padding:6px 10px; border-radius:6px; border:1px solid var(--line); background:#fff; cursor:pointer; }
-  button:hover { background:#f0f0ee; }
-  button.on.near { background:var(--near); color:#fff; border-color:var(--near); }
-  button.on.far { background:var(--far); color:#fff; border-color:var(--far); }
+  .zoom .zhead { position:absolute; top:0; bottom:0; width:2px; margin-left:-1px; background:var(--ink); pointer-events:none; z-index:3; }
+  .transport { display:flex; align-items:center; gap:0.5rem; margin-top:0.625rem; }
+  .transport .now { min-width:3.5rem; text-align:center; font-weight:600; font-variant-numeric:tabular-nums; }
+  .hint { color:var(--ink2); font-size:0.75rem; margin-left:0.5rem; }
+
+  /* Controls: feedback on press, not on release */
+  button { font:inherit; font-weight:500; color:var(--ink); padding:0.4rem 0.8rem; border-radius:0.5rem; border:0;
+           background:var(--fill); cursor:pointer; transition:transform 100ms ease-out, background 120ms ease; }
+  button:hover { background:var(--fill-hover); }
+  button:active { transform:scale(0.97); background:var(--fill-hover); }
+  button:disabled { opacity:.4; pointer-events:none; }
+  button.on { background:var(--ink); color:var(--card); }
   button.danger { color:var(--bad); }
-  select, input[type=text] { font:inherit; padding:5px 8px; border:1px solid var(--line); border-radius:6px; min-width:180px; }
-  .time { font-variant-numeric:tabular-nums; min-width:56px; display:inline-block; }
-  .list { overflow:auto; background:var(--panel); border:1px solid var(--line); border-radius:8px; }
-  .item { display:grid; grid-template-columns: 34px 1fr auto; gap:6px; padding:8px 10px; border-bottom:1px solid var(--line); cursor:pointer; }
-  .item:hover { background:#fafaf8; }
-  .item.sel { background:#eef3fd; }
-  .item .num { font-weight:700; }
-  .item .sub { color:var(--muted); font-size:12px; }
-  .badge { font-size:11px; padding:2px 6px; border-radius:10px; align-self:start; white-space:nowrap; }
-  .badge.near { background:#e3ecfb; color:var(--near); } .badge.far { background:#fbe9df; color:var(--far); }
-  .badge.todo { background:#f1f1ef; color:var(--muted); }
-  .warn { color:var(--warn); font-size:12px; }
-  .keys { color:var(--muted); font-size:12px; }
-  kbd { background:#f1f1ef; border:1px solid var(--line); border-radius:4px; padding:0 4px; font-size:11px; }
-  .toast { position:fixed; top:60px; right:16px; background:var(--ink); color:#fff; padding:8px 14px; border-radius:8px; display:none; gap:12px; align-items:center; }
-  .toast button { background:transparent; color:#fff; border-color:#666; }
+  :focus-visible { outline:2px solid var(--near); outline-offset:2px; }
+
+  .segmented { display:inline-flex; padding:2px; gap:2px; background:var(--fill); border-radius:0.6rem; }
+  .segmented button { background:transparent; padding:0.35rem 0.9rem; border-radius:0.48rem; display:flex; align-items:center; gap:0.4rem; }
+  .segmented button::before { content:""; width:0.45rem; height:0.45rem; border-radius:50%; background:currentColor; opacity:.9; }
+  .segmented button.near { color:var(--near); } .segmented button.far { color:var(--far); }
+  .segmented button:hover { background:var(--fill); }
+  .segmented button.on { color:#fff; box-shadow:0 1px 3px rgba(0,0,0,.18); }
+  .segmented button.on.near { background:var(--near); } .segmented button.on.far { background:var(--far); }
+
+  .stepper { display:inline-flex; align-items:center; background:var(--fill); border-radius:0.5rem; }
+  .stepper button { background:transparent; padding:0.4rem 0.6rem; }
+  .stepper button:hover { background:var(--fill); }
+  .stepper .time { min-width:3.6rem; text-align:center; font-weight:600; font-variant-numeric:tabular-nums; }
+
+  select, input[type=text] { font:inherit; color:var(--ink); padding:0.4rem 0.7rem; border:0; border-radius:0.5rem;
+                             background:var(--fill); min-width:12rem; }
+  select { padding-right:0.4rem; }
+  input::placeholder { color:var(--ink3); }
+
+  input[type=checkbox].switch { appearance:none; -webkit-appearance:none; width:2.25rem; height:1.375rem; border-radius:1rem; margin:0;
+       background:var(--fill-hover); position:relative; cursor:pointer; transition:background 200ms ease; flex:none; }
+  input[type=checkbox].switch::after { content:""; position:absolute; top:2px; left:2px; width:calc(1.375rem - 4px); height:calc(1.375rem - 4px);
+       border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.3); transition:transform 220ms cubic-bezier(.3,1,.4,1); }
+  input[type=checkbox].switch:checked { background:var(--ok); }
+  input[type=checkbox].switch:checked::after { transform:translateX(0.875rem); }
+
+  /* Point details */
+  .detail-head { display:flex; align-items:center; gap:0.75rem; padding:0.9rem 1rem 0.6rem; }
+  .detail-head h2 { font-size:1.375rem; font-weight:700; letter-spacing:-0.02em; line-height:1.1; margin:0; }
+  .warn { color:var(--warn); background:var(--warn-soft); font-size:0.75rem; font-weight:500; padding:0.2rem 0.6rem; border-radius:1rem; }
+  .warn:empty { display:none; }
+  .group { padding:0.25rem 1rem; }
+  .group + .group { border-top:1px solid var(--hair); padding-top:0.5rem; margin-top:0.25rem; }
+  .row { display:flex; flex-wrap:wrap; align-items:center; gap:0.5rem; padding:0.35rem 0; }
+  .row > label, .row > .label { color:var(--ink2); width:4.75rem; flex:none; }
+  .row .sub { color:var(--ink2); }
+  .row .spacer { flex:1; }
+  .toggle { display:flex; align-items:center; gap:0.5rem; color:var(--ink2); cursor:pointer; }
+  details.keys { padding:0.5rem 1rem 0.9rem; color:var(--ink2); font-size:0.75rem; }
+  details.keys summary { cursor:pointer; width:max-content; font-weight:500; }
+  details.keys .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(13rem, 1fr)); gap:0.35rem 1rem; margin-top:0.6rem; }
+  kbd { font:inherit; font-size:0.6875rem; font-weight:600; color:var(--ink); background:var(--fill); border-radius:0.3rem;
+        padding:0.05rem 0.35rem; min-width:1.25rem; display:inline-block; text-align:center; }
+
+  /* Sidebar list */
+  .side { display:flex; flex-direction:column; min-height:0; border-left:1px solid var(--hair); background:var(--card); }
+  .list { overflow:auto; padding:calc(var(--header-h) + 0.5rem) 0.5rem 1rem; flex:1; }
+  .item { display:grid; grid-template-columns:1.75rem 1fr auto; align-items:center; gap:0.6rem; padding:0.55rem 0.6rem;
+          border-radius:0.6rem; cursor:pointer; position:relative; transition:background 120ms ease; }
+  .item + .item::before { content:""; position:absolute; top:0; left:2.95rem; right:0.6rem; height:1px; background:var(--hair); }
+  .item:hover { background:var(--fill); }
+  .item:active { background:var(--fill-hover); }
+  .item.sel { background:var(--sel); }
+  .item.sel::before, .item.sel + .item::before, .item:hover::before, .item:hover + .item::before { display:none; }
+  .item .num { width:1.75rem; height:1.75rem; border-radius:50%; display:grid; place-items:center; font-size:0.8125rem; font-weight:600;
+               background:var(--fill); color:var(--ink2); font-variant-numeric:tabular-nums; }
+  .item .num.near { background:var(--near); color:#fff; } .item .num.far { background:var(--far); color:#fff; }
+  .item .what { font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .item .what.todo { color:var(--ink2); font-weight:400; }
+  .item .sub { color:var(--ink2); font-size:0.75rem; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .item .tally { font-size:0.9375rem; font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:-0.01em; }
+  .item .tally.todo { font-size:0.6875rem; font-weight:500; color:var(--ink2); background:var(--fill); padding:0.15rem 0.5rem; border-radius:1rem; letter-spacing:0; }
+  .item .tally.flag { color:var(--warn); background:var(--warn-soft); }
+
+  /* Toast: a glass capsule that rises from, and returns to, the bottom edge */
+  .toast { position:fixed; left:50%; bottom:1.5rem; z-index:20; display:flex; gap:0.75rem; align-items:center;
+           padding:0.5rem 0.5rem 0.5rem 1rem; border-radius:2rem; color:#fff; font-weight:500;
+           background:rgba(40,40,42,.78); -webkit-backdrop-filter:blur(24px) saturate(180%); backdrop-filter:blur(24px) saturate(180%);
+           box-shadow:inset 0 1px 0 rgba(255,255,255,.14), 0 10px 30px rgba(0,0,0,.25);
+           opacity:0; transform:translate(-50%, 1.5rem) scale(.96); pointer-events:none;
+           transition:opacity 220ms ease, transform 420ms cubic-bezier(.2,.9,.3,1); }
+  .toast.show { opacity:1; transform:translate(-50%, 0) scale(1); pointer-events:auto; }
+  .toast button { background:rgba(255,255,255,.18); color:#fff; border-radius:1rem; padding:0.3rem 0.8rem; }
+  .toast button:hover { background:rgba(255,255,255,.28); }
+
+  @media (max-width: 60rem) {
+    main { grid-template-columns:1fr; height:auto; }
+    .left { overflow:visible; padding-right:1.25rem; }
+    .side { border-left:0; border-top:1px solid var(--hair); }
+    .list { padding-top:0.5rem; overflow:visible; }
+    .team { display:none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition-duration:1ms !important; }
+    .toast, .toast.show { transform:translate(-50%, 0); transition:opacity 200ms ease !important; }
+    button:active, .zoom .zhandle:hover, .zoom .zhandle.drag { transform:none; }
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    header { background:var(--card); -webkit-backdrop-filter:none; backdrop-filter:none; }
+    .toast { background:#2c2c2e; -webkit-backdrop-filter:none; backdrop-filter:none; }
+  }
+  @media (prefers-contrast: more) {
+    :root { --hair:var(--ink2); --ink2:var(--ink); --ink3:var(--ink); }
+    header { background:var(--card); -webkit-backdrop-filter:none; backdrop-filter:none; }
+    button, select, input[type=text], .segmented, .stepper, .card { outline:1px solid var(--ink); }
+    .segmented button, .stepper button { outline:0; }
+  }
 </style>
 </head>
 <body>
 <header>
-  <h1 id="title">Point review</h1>
-  <div class="score"><span class="n" id="scoreN">0</span> – <span class="f" id="scoreF">0</span></div>
-  <div class="keys">Bumps – Opponents</div>
-  <div class="saved" id="saved">Loading…</div>
+  <div class="brand">
+    <h1>Point review</h1>
+    <span class="progress" id="title"></span>
+  </div>
+  <div class="scoreboard" aria-label="Score">
+    <span class="team near">Bumps</span>
+    <span class="score"><span id="scoreN">0</span><span class="dash">–</span><span id="scoreF">0</span></span>
+    <span class="team far">Opponents</span>
+  </div>
+  <div class="saved busy" id="saved" role="status">Loading…</div>
 </header>
 <main>
   <div class="left">
-    <video id="video" src="/video" controls preload="auto" playsinline></video>
+    <div class="stage"><video id="video" src="/video" controls preload="auto" playsinline></video></div>
     <div class="timeline" id="timeline" title="Whole match"><div class="head" id="head"></div></div>
-    <div class="zoomwrap">
+    <div class="card zoomwrap">
       <div class="zoom" id="zoom" title="Zoomed in on the selected point. Drag the handles to change the start or end.">
         <div class="zseg" id="zseg"></div>
         <div class="zhandle start" id="hStart" title="Drag to move the start"></div>
         <div class="zhandle end" id="hEnd" title="Drag to move the end"></div>
         <div class="zhead" id="zhead"></div>
       </div>
-      <div class="row" style="margin:4px 0 0">
-        <button id="back02" title=",">◀ 0.2s</button>
-        <span class="time" id="nowTime"></span>
-        <button id="fwd02" title=".">0.2s ▶</button>
+      <div class="transport">
+        <button id="back02" title="Back 0.2 seconds (,)">−0.2s</button>
+        <span class="now" id="nowTime"></span>
+        <button id="fwd02" title="Forward 0.2 seconds (.)">+0.2s</button>
         <button id="speed" title="H">Half speed</button>
-        <span class="keys">Drag the green handle (start) or red handle (end). Click anywhere on this bar to jump there.</span>
+        <span class="hint">Drag the green handle to move the start, the red one to move the end. Click the bar to jump.</span>
       </div>
     </div>
-    <div class="panel" id="detail">
-      <div class="row">
-        <strong id="dTitle">No point selected</strong>
+    <div class="card" id="detail">
+      <div class="detail-head">
+        <h2 id="dTitle">No point selected</h2>
         <span class="warn" id="dWarn"></span>
       </div>
-      <div class="row">
-        <label>Start</label>
-        <button data-nudge="start:-0.5">−½s</button><span class="time" id="dStart"></span><button data-nudge="start:0.5">+½s</button>
-        <button id="setStart" title="[">Start = now</button>
-        <label style="margin-left:12px">End</label>
-        <button data-nudge="end:-0.5">−½s</button><span class="time" id="dEnd"></span><button data-nudge="end:0.5">+½s</button>
-        <button id="setEnd" title="]">End = now</button>
+      <div class="group">
+        <div class="row">
+          <span class="label">Won by</span>
+          <div class="segmented">
+            <button class="near" id="winNear" title="1">Bumps</button>
+            <button class="far" id="winFar" title="2">Opponents</button>
+          </div>
+        </div>
+        <div class="row">
+          <label for="action">Ended by</label>
+          <select id="action"></select>
+          <span class="sub">by a player on</span>
+          <div class="segmented">
+            <button class="near" id="byNear">Bumps</button>
+            <button class="far" id="byFar">Opponents</button>
+          </div>
+        </div>
+        <div class="row">
+          <label for="player">Player</label>
+          <input type="text" id="player" list="playerNames" placeholder="Bumps player (optional)">
+          <datalist id="playerNames"></datalist>
+          <input type="text" id="notes" placeholder="Notes" aria-label="Notes" style="flex:1">
+        </div>
       </div>
-      <div class="row">
-        <label>Won by</label>
-        <button class="near" id="winNear" title="1">Bumps</button>
-        <button class="far" id="winFar" title="2">Opponents</button>
+      <div class="group">
+        <div class="row">
+          <span class="label">Start</span>
+          <div class="stepper"><button data-nudge="start:-0.5" title="Half a second earlier">−</button><span class="time" id="dStart"></span><button data-nudge="start:0.5" title="Half a second later">+</button></div>
+          <button id="setStart" title="[">Set to now</button>
+          <span class="label" style="margin-left:1rem; width:auto">End</span>
+          <div class="stepper"><button data-nudge="end:-0.5" title="Half a second earlier">−</button><span class="time" id="dEnd"></span><button data-nudge="end:0.5" title="Half a second later">+</button></div>
+          <button id="setEnd" title="]">Set to now</button>
+        </div>
+        <div class="row">
+          <span class="label">Fix</span>
+          <button id="merge" title="M">Merge with next</button>
+          <button id="split" title="S">Split here</button>
+          <button id="add" title="A">Add a point here</button>
+          <button class="danger" id="del" title="X">Not a point</button>
+          <span class="spacer"></span>
+          <label class="toggle" style="width:auto"><input type="checkbox" class="switch" id="autoNext" checked> Play next point automatically</label>
+        </div>
       </div>
-      <div class="row">
-        <label>Ended by</label>
-        <select id="action"></select>
-        <span class="sub">done by</span>
-        <button class="near" id="byNear">Bumps player</button>
-        <button class="far" id="byFar">Opponents player</button>
-      </div>
-      <div class="row">
-        <label>Player</label>
-        <input type="text" id="player" list="playerNames" placeholder="Bumps player (optional)">
-        <datalist id="playerNames"></datalist>
-        <input type="text" id="notes" placeholder="Notes" style="flex:1">
-      </div>
-      <div class="row">
-        <button class="danger" id="del" title="X">Not a point</button>
-        <button id="merge" title="M">Merge with next</button>
-        <button id="split" title="S">Split here</button>
-        <button id="add" title="A">Add a point here</button>
-        <label style="min-width:0;margin-left:auto"><input type="checkbox" id="autoNext" checked> Go to next point when a clip ends</label>
-      </div>
-      <div class="keys">
-        <kbd>Space</kbd> play/pause · <kbd>←</kbd><kbd>→</kbd> 1s (<kbd>Shift</kbd> 5s) · <kbd>↑</kbd><kbd>↓</kbd> previous/next point ·
-        <kbd>[</kbd> <kbd>]</kbd> start/end = now · <kbd>1</kbd> Bumps won · <kbd>2</kbd> Opponents won ·
-        <kbd>,</kbd><kbd>.</kbd> 0.2s · <kbd>H</kbd> half speed · <kbd>X</kbd> not a point · <kbd>M</kbd> merge · <kbd>S</kbd> split · <kbd>A</kbd> add
-      </div>
+      <details class="keys">
+        <summary>Keyboard shortcuts</summary>
+        <div class="grid">
+          <span><kbd>Space</kbd> Play or pause</span>
+          <span><kbd>↑</kbd> <kbd>↓</kbd> Previous or next point</span>
+          <span><kbd>←</kbd> <kbd>→</kbd> 1 second (<kbd>Shift</kbd> 5 seconds)</span>
+          <span><kbd>,</kbd> <kbd>.</kbd> 0.2 seconds</span>
+          <span><kbd>H</kbd> Half speed</span>
+          <span><kbd>[</kbd> <kbd>]</kbd> Set start or end to now</span>
+          <span><kbd>1</kbd> Bumps won</span>
+          <span><kbd>2</kbd> Opponents won</span>
+          <span><kbd>M</kbd> Merge with next</span>
+          <span><kbd>S</kbd> Split here</span>
+          <span><kbd>A</kbd> Add a point</span>
+          <span><kbd>X</kbd> Not a point</span>
+        </div>
+      </details>
     </div>
   </div>
-  <div class="list" id="list"></div>
+  <aside class="side"><div class="list" id="list"></div></aside>
 </main>
-<div class="toast" id="toast"><span id="toastMsg"></span><button id="undo">Undo</button></div>
+<div class="toast" id="toast" role="status"><span id="toastMsg"></span><button id="undo">Undo</button></div>
 
 <script>
 const ACTIONS = [
@@ -156,16 +326,17 @@ let points = [], sel = -1, meta = {}, undoStack = [], saveTimer = null;
 
 const $ = id => document.getElementById(id);
 const fmt = t => { if (t == null) return ""; const m = Math.floor(t / 60), s = t - m * 60; return `${m}:${s.toFixed(1).padStart(4, "0")}`; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const actionLabel = a => (ACTIONS.find(x => x[0] === a) || ["", ""])[1];
 
 function snapshot() { undoStack.push(JSON.stringify(points)); if (undoStack.length > 50) undoStack.shift(); }
 function toast(msg) {
-  $("toastMsg").textContent = msg; $("toast").style.display = "flex";
-  clearTimeout(toast.t); toast.t = setTimeout(() => $("toast").style.display = "none", 6000);
+  $("toastMsg").textContent = msg; $("toast").classList.add("show");
+  clearTimeout(toast.t); toast.t = setTimeout(() => $("toast").classList.remove("show"), 6000);
 }
 $("undo").onclick = () => {
   if (!undoStack.length) return;
-  points = JSON.parse(undoStack.pop()); $("toast").style.display = "none";
+  points = JSON.parse(undoStack.pop()); $("toast").classList.remove("show");
   sel = Math.min(sel, points.length - 1); changed(false);
 };
 
@@ -186,15 +357,16 @@ function changed(doSave = true) {
   render();
   if (doSave) scheduleSave(); else scheduleSave();
 }
+function status(text, state) { const el = $("saved"); el.textContent = text; el.className = "saved" + (state ? " " + state : ""); }
 function scheduleSave() {
-  $("saved").textContent = "Saving…";
+  status("Saving…", "busy");
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
     try {
       const r = await fetch("/api/points", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(points) });
       if (!r.ok) throw new Error(r.status);
-      $("saved").textContent = "All changes saved";
-    } catch (e) { $("saved").textContent = "Couldn't save. Is Terminal still running vb review?"; }
+      status("All changes saved");
+    } catch (e) { status("Couldn't save. Is Terminal still running vb review?", "error"); }
   }, 400);
 }
 
@@ -208,15 +380,19 @@ function render() {
     if (complete(p)) done++;
     const el = document.createElement("div");
     el.className = "item" + (i === sel ? " sel" : "");
-    const badge = w ? `<span class="badge ${w}">${w === "near" ? "Bumps" : "Opponents"} ${n}-${f}</span>` : `<span class="badge todo">to review</span>`;
-    el.innerHTML = `<div class="num">${p.index}</div>
-      <div><div>${fmt(p.start_s)} – ${fmt(p.end_s)} <span class="sub">(${(p.end_s - p.start_s).toFixed(0)}s)</span></div>
-      <div class="sub">${p.end_action ? actionLabel(p.end_action) : ""}${p.player ? " · " + p.player : ""}${!p.ended_by_whistle && !p.reviewed && p.clip !== null ? " · no end whistle heard" : ""}</div></div>${badge}`;
+    const unsure = !p.ended_by_whistle && !p.reviewed && p.clip !== null;
+    const tally = w ? `<span class="tally">${n}–${f}</span>`
+      : `<span class="tally todo${unsure ? " flag" : ""}">${unsure ? "Check the end" : "To review"}</span>`;
+    const what = p.end_action ? actionLabel(p.end_action).replace(/ \(.*/, "") + (p.player ? " · " + esc(p.player) : "")
+      : (w ? (w === "near" ? "Bumps" : "Opponents") + " won" : "Not reviewed yet");
+    el.innerHTML = `<div class="num ${w || ""}">${p.index}</div>
+      <div style="min-width:0"><div class="what${w || p.end_action ? "" : " todo"}">${what}</div>
+      <div class="sub">${fmt(p.start_s)} – ${fmt(p.end_s)} · ${(p.end_s - p.start_s).toFixed(0)}s</div></div>${tally}`;
     el.onclick = () => select(i, true);
     list.appendChild(el);
   });
   $("scoreN").textContent = n; $("scoreF").textContent = f;
-  $("title").textContent = `Point review · ${points.length} points · ${done} done`;
+  $("title").textContent = `${done} of ${points.length} reviewed`;
   // timeline
   const tl = $("timeline"), dur = v.duration || meta.duration_s || 1;
   tl.querySelectorAll(".seg").forEach(e => e.remove());
@@ -267,13 +443,16 @@ function zoomTime(clientX) {
 let drag = null;
 ["hStart", "hEnd"].forEach(id => $(id).addEventListener("pointerdown", e => {
   if (sel < 0) return; e.preventDefault(); e.stopPropagation();
-  drag = { which: id === "hStart" ? "start" : "end", range: zoomRange() }; snapshot(); v.pause();
+  const hb = $(id).getBoundingClientRect();
+  drag = { which: id === "hStart" ? "start" : "end", range: zoomRange(), el: $(id),
+           grab: e.clientX - (hb.left + hb.width / 2) };   // keep the handle under the pointer where it was grabbed
+  snapshot(); v.pause(); $(id).classList.add("drag");
   $(id).setPointerCapture(e.pointerId);
 }));
 document.addEventListener("pointermove", e => {
   if (!drag) return; const p = points[sel];
   const b = $("zoom").getBoundingClientRect(), r = drag.range;
-  let t = r[0] + Math.min(1, Math.max(0, (e.clientX - b.left) / b.width)) * (r[1] - r[0]);
+  let t = r[0] + Math.min(1, Math.max(0, (e.clientX - drag.grab - b.left) / b.width)) * (r[1] - r[0]);
   t = Math.round(t * 10) / 10;
   if (drag.which === "start") p.start_s = Math.min(t, p.end_s - 0.5); else { p.end_s = Math.max(t, p.start_s + 0.5); p.ended_by_whistle = true; }
   v.currentTime = drag.which === "start" ? p.start_s : p.end_s;
@@ -283,12 +462,12 @@ document.addEventListener("pointermove", e => {
   $(drag.which === "start" ? "hStart" : "hEnd").style.left = (100 * ((drag.which === "start" ? p.start_s : p.end_s) - r[0]) / (r[1] - r[0])) + "%";
   $("dStart").textContent = fmt(p.start_s); $("dEnd").textContent = fmt(p.end_s);
 });
-document.addEventListener("pointerup", () => { if (!drag) return; const p = points[sel]; drag = null; fixClip(p); changed(); });
+function endDrag() { if (!drag) return; const p = points[sel]; drag.el.classList.remove("drag"); drag = null; fixClip(p); changed(); }
+document.addEventListener("pointerup", endDrag); document.addEventListener("pointercancel", endDrag);
 $("zoom").addEventListener("click", e => { if (sel < 0 || e.target.classList.contains("zhandle")) return; v.currentTime = zoomTime(e.clientX); });
 function step(d) { v.pause(); v.currentTime = Math.max(0, v.currentTime + d); }
 $("back02").onclick = () => step(-0.2); $("fwd02").onclick = () => step(0.2);
-$("speed").onclick = () => { v.playbackRate = v.playbackRate === 1 ? 0.5 : 1; $("speed").classList.toggle("on", v.playbackRate !== 1);
-  $("speed").classList.toggle("plain", v.playbackRate !== 1); };
+$("speed").onclick = () => { v.playbackRate = v.playbackRate === 1 ? 0.5 : 1; $("speed").classList.toggle("on", v.playbackRate !== 1); };
 
 function renderDetail() {
   const p = points[sel];
@@ -308,7 +487,7 @@ function renderDetail() {
   // player suggestions: roster + names already used
   const names = new Set((meta.players || []).map(x => x.name || x));
   points.forEach(q => q.player && names.add(q.player));
-  $("playerNames").innerHTML = [...names].map(x => `<option value="${x}">`).join("");
+  $("playerNames").innerHTML = [...names].map(x => `<option value="${esc(x)}">`).join("");
 }
 
 function select(i, play) {
@@ -379,7 +558,7 @@ document.addEventListener("keydown", e => {
   meta = await (await fetch("/api/meta")).json();
   points = await (await fetch("/api/points")).json();
   $("action").innerHTML = ACTIONS.map(([k, l]) => `<option value="${k}">${l}</option>`).join("");
-  $("saved").textContent = "All changes saved";
+  status("All changes saved");
   points.forEach(p => { p.extra = p.extra || {}; });
   select(0, false);
 })();
